@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=QuickShare (send to phone)
+Comment=Send the selected files to a nearby device with QuickShare
+Exec=quickshare send-picker %F
+Icon=dev.dhivalabs.quickshare
+Terminal=false
+Categories=Utility;FileTransfer;
+NoDisplay=false

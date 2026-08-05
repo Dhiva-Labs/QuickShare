@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#26a269"/>
+      <stop offset="1" stop-color="#1a5fb4"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- rounded-square app tile -->
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)"/>
+  <rect x="8" y="8" width="112" height="56" rx="26" fill="url(#shine)"/>
+  <!-- radiating arcs: "nearby" -->
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" opacity="0.85">
+    <path d="M 78 38 a 26 26 0 0 1 12 22" stroke-width="6"/>
+    <path d="M 88 26 a 42 42 0 0 1 19 35" stroke-width="6" opacity="0.55"/>
+  </g>
+  <!-- share arrow -->
+  <g>
+    <path d="M 30 92 L 84 52" stroke="#ffffff" stroke-width="11"
+          stroke-linecap="round"/>
+    <path d="M 62 46 L 88 49 L 85 75 Z" fill="#ffffff"
+          stroke="#ffffff" stroke-width="8" stroke-linejoin="round"/>
+    <circle cx="30" cy="92" r="11" fill="#ffffff"/>
+  </g>
+</svg>
