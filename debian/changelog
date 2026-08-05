@@ -1,3 +1,10 @@
+nearshare (1.0.3~noble1) noble; urgency=medium
+
+  * Prevent duplicate instances; bind Ctrl+Alt+N shortcut; system-wide
+    Files integration.
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 05:20:40 +0530
+
 nearshare (1.0.2-1) noble; urgency=medium
 
   * Ship the Nautilus right-click "Send with NearShare" top-level menu
