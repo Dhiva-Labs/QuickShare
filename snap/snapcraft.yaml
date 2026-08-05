@@ -138,13 +138,24 @@ parts:
       # protos/*.proto -> quickshare/proto/*_pb2.py. Not committed
       # upstream (gitignored -- tied to the protobuf runtime version),
       # regenerated here against this build's own protobuf/grpcio-tools.
-      # grpcio-tools is a BUILD-time-only dependency: installed into the
-      # venv just long enough to run genproto.sh, then removed so it
-      # (and grpcio, its large native-code dependency) don't ship in the
-      # final snap -- only the generated *_pb2.py source files do.
-      "$CRAFT_PART_INSTALL"/bin/pip install --no-cache-dir grpcio-tools
-      bash "$CRAFT_PART_SRC"/tools/genproto.sh "$CRAFT_PART_INSTALL"/bin/python3
-      "$CRAFT_PART_INSTALL"/bin/pip uninstall -y grpcio-tools grpcio
+      # grpcio-tools is BUILD-time only. It is installed into a THROWAWAY
+      # venv rather than the app venv: `craftctl default` above finishes
+      # by pointing the app venv's bin/python3 at the base snap's system
+      # interpreter, so a pip run there resolves to the externally-managed
+      # system environment and dies with PEP 668
+      # (error: externally-managed-environment). A separate venv also
+      # keeps grpcio (a large native-code dependency) out of the shipped
+      # snap entirely -- only the generated *_pb2.py sources ship.
+      # NB: /usr/bin/python3 explicitly. The python plugin puts the app
+      # venv's bin first on PATH, and that interpreter cannot create a
+      # new venv here (Permission denied on its own bin/python3).
+      protogen=/tmp/quickshare-protogen
+      rm -rf "$protogen"
+      /usr/bin/python3 -m venv "$protogen"
+      "$protogen"/bin/pip install --no-cache-dir --upgrade pip
+      "$protogen"/bin/pip install --no-cache-dir grpcio-tools protobuf
+      bash "$CRAFT_PART_SRC"/tools/genproto.sh "$protogen"/bin/python3
+      rm -rf "$protogen"
 
       # ---- stage the quickshare package itself ---------------------
       # This project has no pyproject.toml/setup.py: the non-snap
@@ -200,6 +211,10 @@ parts:
       - usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.quickshare.svg
       - usr/share/applications/dev.dhivalabs.quickshare.desktop
     override-build: |
+      # The dump plugin populates the install dir with hard links, which
+      # fails outright if an earlier interrupted build left files there.
+      # Start from empty so rebuilds are idempotent.
+      rm -rf "${CRAFT_PART_INSTALL:?}"/*
       craftctl default
       # snapd's desktop-file export rewrites only the Exec= line's
       # first (command) token to the real /snap/bin/quickshare.gui
