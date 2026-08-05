@@ -7,27 +7,27 @@ below is NearShare-specific to that PPA name.
 
 ## Version convention
 
-`debian/changelog`'s in-tree version, `1.0.0-1`, is the plain Debian-style
+`debian/changelog`'s in-tree version, `1.0.2-1`, is the plain Debian-style
 version for a standalone `.deb` (see `packaging/DEB.md`). Launchpad PPA
 uploads use a distinct, per-series suffix instead, so the same upstream
 version can be built once per targeted Ubuntu release without version
 collisions:
 
 ```
-1.0.0~noble1     # noble (24.04) — first PPA upload of 1.0.0
-1.0.0~jammy1     # jammy (22.04) — same source, rebuilt for jammy
+1.0.2~noble1     # noble (24.04) — first PPA upload of 1.0.2
+1.0.2~jammy1     # jammy (22.04) — same source, rebuilt for jammy
 ```
 
 The `~` sorts *before* nothing in Debian version comparison, so
-`1.0.0~noble1 < 1.0.0`, keeping PPA builds ordered before a hypothetical
-plain `1.0.0-1` release of the same upstream version.
+`1.0.2~noble1 < 1.0.2`, keeping PPA builds ordered before a hypothetical
+plain `1.0.2-1` release of the same upstream version.
 
 Before building the source package for upload, add a new changelog entry
-(don't reuse `1.0.0-1`'s entry — Launchpad rejects re-uploads of a version
+(don't reuse `1.0.2-1`'s entry — Launchpad rejects re-uploads of a version
 it's already seen, successful or not):
 
 ```bash
-dch --newversion 1.0.0~noble1 --distribution noble \
+dch --newversion 1.0.2~noble1 --distribution noble \
     "PPA build for noble."
 ```
 
@@ -86,7 +86,7 @@ match `debian/changelog`'s Maintainer address, `dhivakar1010@gmail.com`.)
 
 ```bash
 debuild -S -sa -k<KEYID>
-dput dhiva-apps ../nearshare_1.0.0~noble1_source.changes
+dput dhiva-apps ../nearshare_1.0.2~noble1_source.changes
 ```
 
 (`dhiva-apps` here is whatever `dput` host alias/section this house's
@@ -106,7 +106,7 @@ force the re-upload rather than bumping the version needlessly:
 
 ```bash
 rm -f ../nearshare_*_source.dhiva-apps.upload
-dput -f dhiva-apps ../nearshare_1.0.0~noble1_source.changes
+dput -f dhiva-apps ../nearshare_1.0.2~noble1_source.changes
 ```
 
 **2. Launchpad discards uploads signed by an unregistered key.** `dput`
@@ -127,7 +127,7 @@ Or watch <https://launchpad.net/~dhiva-labs/+archive/ubuntu/apps/+packages>.
 1. Confirm `python3-grpc-tools` (and the runtime Depends — `python3-gi`,
    `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `python3-zeroconf`, `python3-protobuf`,
    `python3-cryptography`) all exist in that series.
-2. `dch --newversion 1.0.0~<series>1 --distribution <series> "PPA build for <series>."`
+2. `dch --newversion 1.0.2~<series>1 --distribution <series> "PPA build for <series>."`
 3. Rehearse the source build, sign, and upload exactly as above, targeting
    that series' distribution name in both the changelog and the `dput`
    call.

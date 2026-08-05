@@ -1,3 +1,33 @@
+nearshare (1.0.2-1) noble; urgency=medium
+
+  * Ship the Nautilus right-click "Send with NearShare" top-level menu
+    item SYSTEM-WIDE, at /usr/share/nautilus-python/extensions/
+    nearshare_menu.py (debian/extra/nearshare_menu.py, hardcoded to the
+    packaged launcher /usr/bin/nearshare) -- confirmed via `dpkg -L
+    python3-nautilus` and its README.Debian to be nautilus-python's
+    "all-user plugin directory". `sudo apt install ./nearshare_*.deb` is
+    now a true one-step install: the right-click item works for every
+    user with no per-user `nearshare install` step.
+  * No system-wide Nautilus *script* is shipped: unlike nautilus-python's
+    extension search path, Nautilus scripts are loaded only from
+    $XDG_DATA_HOME/nautilus/scripts, which is per-user with no
+    system-wide equivalent -- confirmed by inspecting the installed
+    nautilus/nautilus-data package contents. The extension above is this
+    package's only (and sufficient) system-wide integration point;
+    `nearshare install` still covers the per-user Scripts submenu entry
+    for anyone who wants it too.
+  * Promote python3-nautilus from Suggests to Recommends, so a plain
+    `apt install`/`apt install ./nearshare_*.deb` pulls it in by default
+    and the right-click item is active out of the box. Still non-fatal
+    if declined or later removed.
+  * Add debian/postinst/debian/postrm: best-effort
+    update-desktop-database and gtk-update-icon-cache on
+    configure/remove/purge, with a note that each logged-in user should
+    log out or run `nautilus -q` once to pick up the new right-click
+    item (nothing is killed/restarted on the user's behalf).
+
+ -- Dhiva Labs <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 15:30:00 +0530
+
 nearshare (1.0.0~noble1) noble; urgency=medium
 
   * PPA build for Ubuntu 24.04 (noble).

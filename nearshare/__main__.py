@@ -55,7 +55,27 @@ def _ensure_gi_importable() -> None:
 
 _ensure_gi_importable()
 
+from nearshare.core.service import AlreadyRunning  # noqa: E402
 from nearshare.ui.app import main  # noqa: E402  (must follow the sys.path fix)
 
+
+def _run() -> int:
+    """Refuse to start a second instance.
+
+    Two live instances would each advertise over mDNS and BLE, so a
+    phone lists this machine once per instance. GApplication's own
+    single-instance handling covers the usual double-launch, but not a
+    launch from a different session bus or a build where registering the
+    bus name failed, so the service raises AlreadyRunning as a backstop.
+    """
+    try:
+        return main()
+    except AlreadyRunning:
+        print("NearShare is already running. Use `nearshare status` to "
+              "check it, or `nearshare toggle` to change visibility.",
+              file=sys.stderr)
+        return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())

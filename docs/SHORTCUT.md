@@ -28,7 +28,7 @@ instead of the full path.
    - **Name**: `NearShare: Toggle Visibility`
    - **Command**: `<project>/bin/nearshare toggle`
    - **Shortcut**: press your desired key combination, e.g.
-     **Super+Shift+S**.
+     **Ctrl+Alt+N**.
 5. Click **Add**. Test it: press the shortcut and you should get a
    desktop notification saying either "Visible to nearby devices" or
    "Hidden from nearby devices".
@@ -36,7 +36,7 @@ instead of the full path.
 ## Option B — one-shot `gsettings` commands
 
 Paste this whole block into a terminal. It creates a new custom
-keybinding without touching any existing ones, bound to **Super+Shift+S**.
+keybinding without touching any existing ones, bound to **Ctrl+Alt+N**.
 Replace `<project>` with your actual repository path first (or run the
 `sed` line as-is if you `cd` into the repo first — it fills it in from
 `pwd`).
@@ -62,9 +62,9 @@ gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
 gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
     name "NearShare: Toggle Visibility"
 gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
-    binding "<Super><Shift>s"
+    binding "<Control><Alt>n"
 
-echo "Bound Super+Shift+S to: $PROJECT_DIR/bin/nearshare toggle"
+echo "Bound Ctrl+Alt+N to: $PROJECT_DIR/bin/nearshare toggle"
 ```
 
 To remove it later, delete `$KEY_PATH` from the `custom-keybindings`

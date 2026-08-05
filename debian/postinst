@@ -1,0 +1,49 @@
+#!/bin/sh
+# postinst for nearshare.
+#
+# Best-effort re-index of the desktop-entry and icon-theme caches so the
+# three .desktop files under /usr/share/applications and the app icon
+# under /usr/share/icons/hicolor show up (and the new system-wide
+# Nautilus right-click item works) without the admin having to do
+# anything else. Both tools are optional at runtime -- desktop-file-utils
+# and hicolor-icon-theme aren't hard Depends of this package -- so every
+# step here is wrapped to never fail the package's configuration if the
+# tool is missing or errors out. This mirrors nearshare/cli.py's own
+# _update_desktop_database()/_install_icon() best-effort behaviour for
+# the per-user (`nearshare install`) path.
+#
+# This deliberately does NOT try to restart Nautilus for the user (killing
+# another user's file manager process from a postinst run as root would be
+# both surprising and, on a multi-user system, wrong). Instead it just
+# prints what the admin/user should do.
+
+set -e
+
+case "$1" in
+    configure)
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications \
+                >/dev/null 2>&1 || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor \
+                >/dev/null 2>&1 || true
+        fi
+
+        echo "nearshare: installed the system-wide Nautilus right-click"
+        echo "  \"Send with NearShare\" item. Each logged-in user needs to"
+        echo "  either log out and back in, or run once:"
+        echo "      nautilus -q"
+        echo "  for Files to pick it up (no other per-user step needed)."
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

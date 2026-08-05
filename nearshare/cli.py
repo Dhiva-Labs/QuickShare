@@ -15,7 +15,10 @@ background discovery, so "not visible right now" is the normal state.
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
+import contextlib
+import io
 import json
 import os
 import re
@@ -365,14 +368,28 @@ async def _send_ephemeral(files: list[str], to: str | None) -> int:
 # --------------------------------------------------------------- install
 #
 # `nearshare install` wires the project into the desktop: a PATH symlink,
-# the .desktop launchers, and a Nautilus right-click script. Every step
-# is idempotent (safe to re-run) and every path is resolved through
+# the .desktop launchers, a Nautilus right-click script, and (see the
+# gsettings section below) a GNOME keyboard shortcut. Every step is
+# idempotent (safe to re-run) and every path is resolved through
 # Path.home() / $XDG_DATA_HOME at call time (not import time) so tests
 # can monkeypatch HOME/XDG_DATA_HOME and exercise the real code against
 # a throwaway fake home directory. `nearshare uninstall` reverses each
-# step; neither subcommand touches the GNOME keyboard shortcut (that's a
-# gsettings change to the user's own desktop config, so we only print the
-# commands -- see _print_shortcut_commands).
+# step, including the keyboard shortcut it created.
+#
+# Running inside the snap changes what's possible: strict confinement's
+# `home` interface does not grant a snap access to hidden dot-directories
+# under $HOME, so ~/.local/bin, ~/.local/share/applications, and
+# ~/.local/share/nautilus* can never be written from in there -- every
+# step that touches one of those is skipped with a one-line reason
+# instead of crashing with a PermissionError. gsettings, however, DOES
+# work under snap confinement (the gnome extension plugs it), so the
+# keyboard shortcut is still bound. See _in_snap and _install_snap.
+
+
+def _in_snap() -> bool:
+    """True when this process is running inside the snap package (snapd
+    always sets $SNAP for confined apps)."""
+    return bool(os.environ.get("SNAP"))
 
 
 def _xdg_data_home() -> Path:
@@ -663,65 +680,477 @@ def _uninstall_nautilus_script() -> None:
         print(f"  {dest} not present (already removed)")
 
 
-def _print_shortcut_commands() -> None:
-    """Print (never run) the gsettings one-liner from docs/SHORTCUT.md,
-    filled in with the installed launcher's absolute path -- gsettings
-    custom-keybinding commands run outside any login shell, so PATH isn't
-    reliable there even once ~/.local/bin is added to it."""
-    nearshare_bin = _installed_bin_path()
-    key_base = "org.gnome.settings-daemon.plugins.media-keys"
-    key_path = ("/org/gnome/settings-daemon/plugins/media-keys/"
-               "custom-keybindings/nearshare-toggle/")
-    print("  To bind Super+Shift+S to toggle visibility (see "
-         "docs/SHORTCUT.md for the GUI steps), run:")
-    print()
-    print(f'    existing="$(gsettings get {key_base} custom-keybindings)"')
-    print('    if [[ "$existing" == "@as []" || "$existing" == "[]" ]]; then')
-    print(f'        new="[\'{key_path}\']"')
-    print('    else')
-    print(f'''        new="$(echo "$existing" | sed "s/]$/, '{key_path}']/")"''')
-    print('    fi')
-    print(f'    gsettings set {key_base} custom-keybindings "$new"')
-    print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
-         f'command "{nearshare_bin} toggle"')
-    print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
-         'name "NearShare: Toggle Visibility"')
-    print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
-         'binding "<Super><Shift>s"')
+# ---------------------------------------------------- GNOME shortcut
+#
+# `nearshare install` binds a GNOME custom keybinding to `nearshare
+# toggle` via the gsettings CLI (rather than the Gio bindings module:
+# querying schema existence through Gio.Settings.new() aborts the whole
+# process with a fatal GLib-GIO-ERROR if the schema isn't installed --
+# not a catchable exception -- whereas the gsettings CLI just exits
+# non-zero, which we can check for cleanly. This matters because inside
+# the snap, org.gnome.settings-daemon.plugins.media-keys' schema is NOT
+# among the schemas the confined process can see (it ships on the host
+# via the gnome-settings-daemon package, not the gnome platform content
+# snap, and AppArmor blocks reading the host's
+# /usr/share/glib-2.0/schemas directly) -- verified empirically with
+# `snap run --shell nearshare -c gsettings list-schemas`, which lists ~55
+# schemas from the bundled gnome platform but not this one. So
+# _gsettings_available() below returns False under snap today; if a
+# future base snap ever bundles that schema this code picks it up
+# automatically, no snap-specific branch needed here.
+#
+# Default key combo is Ctrl+Alt+N, not a Super-chord: some keyboards
+# (and some window managers/remote desktops) have no usable Super key.
+# Checked for collisions against a real GNOME session's
+# org.gnome.desktop.wm.keybindings, org.gnome.shell.keybindings,
+# org.gnome.mutter(.wayland).keybindings, and
+# org.gnome.settings-daemon.plugins.media-keys (`gsettings
+# list-recursively <schema>`) -- nothing in any of them uses
+# <Control><Alt>n. `--key` (cmd_install) overrides it with any other
+# accelerator string.
+#
+# All gsettings CLI invocations funnel through _run_gsettings so tests
+# can monkeypatch that single choke point instead of touching the real
+# user's GNOME settings.
+
+_MEDIA_KEYS_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys"
+_KEYBINDING_SCHEMA = f"{_MEDIA_KEYS_SCHEMA}.custom-keybinding"
+_KEYBINDING_ID = "nearshare-toggle"
+_KEYBINDING_PATH = ("/org/gnome/settings-daemon/plugins/media-keys/"
+                    f"custom-keybindings/{_KEYBINDING_ID}/")
+DEFAULT_SHORTCUT_BINDING = "<Control><Alt>n"
+_SHORTCUT_NAME = "NearShare: Toggle Visibility"
+
+_ACCEL_MODIFIER_LABELS = {"control": "Ctrl", "primary": "Ctrl", "alt": "Alt",
+                         "shift": "Shift", "super": "Super", "meta": "Meta",
+                         "hyper": "Hyper"}
+_ACCEL_RE = re.compile(
+    r"^(?:<(?:Control|Primary|Alt|Shift|Super|Meta|Hyper)>)+\S+$",
+    re.IGNORECASE)
 
 
-def cmd_install(args: argparse.Namespace) -> int:
+def _try_gtk_accelerator_parse(accel: str) -> tuple[int, int] | bool | None:
+    """(keyval, mods) via Gtk.accelerator_parse if PyGObject/GTK4 is
+    importable in this process; False if GTK is importable but says
+    `accel` itself is invalid; None if GTK isn't importable at all here
+    (cli.py has to keep working without GTK installed -- e.g. a
+    headless box only ever running `nearshare on/off/status` -- so
+    validate_accelerator()/accelerator_label() fall back to a regex/
+    manual parse in that case, not to a hard dependency on GTK)."""
+    try:
+        import gi
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+    except (ImportError, ValueError):
+        return None
+    ok, keyval, mods = Gtk.accelerator_parse(accel)
+    if not ok or keyval == 0:
+        return False
+    return (keyval, mods)
+
+
+def validate_accelerator(accel: str) -> str | None:
+    """None if `accel` is a syntactically valid GNOME/GTK accelerator
+    string (e.g. "<Control><Alt>n"); otherwise a human-readable reason
+    it was rejected, for `nearshare install --key` to print instead of
+    writing a broken binding."""
+    if not accel:
+        return "empty accelerator"
+    result = _try_gtk_accelerator_parse(accel)
+    if result is False:
+        return (f"{accel!r} isn't a valid accelerator -- try something "
+               "like \"<Control><Alt>n\"")
+    if result is not None:
+        return None
+    # GTK unavailable in this process: fall back to a syntax check.
+    if not _ACCEL_RE.match(accel):
+        return (f"{accel!r} doesn't look like a valid accelerator -- "
+               "expected modifiers in angle brackets followed by a key "
+               "name, e.g. \"<Control><Alt>n\"")
+    return None
+
+
+def accelerator_label(accel: str) -> str:
+    """Human-readable form of a gsettings accelerator string, e.g.
+    "<Control><Alt>n" -> "Ctrl+Alt+N" -- used for display in the CLI's
+    own messages and the GUI's setup panel instead of raw gsettings
+    syntax."""
+    result = _try_gtk_accelerator_parse(accel)
+    if result and result is not False:
+        keyval, mods = result
+        import gi
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+        label = Gtk.accelerator_get_label(keyval, mods)
+        if label:
+            return label
+    # Fallback: translate our own modifier tokens and title-case the key.
+    mod_tokens = re.findall(r"<(\w+)>", accel)
+    key = re.sub(r"<\w+>", "", accel)
+    parts = [_ACCEL_MODIFIER_LABELS.get(m.lower(), m) for m in mod_tokens]
+    parts.append(key.upper() if len(key) == 1 else key.capitalize())
+    return "+".join(parts)
+
+
+def _run_gsettings(args: list[str]) -> subprocess.CompletedProcess:
+    """The sole entry point to the gsettings CLI -- monkeypatched by
+    tests so shortcut bind/unbind logic never touches the real user's
+    dconf database.
+
+    Never raises: a transient failure (gsettings hanging because dconf
+    is momentarily busy, the binary disappearing mid-run, etc.) must
+    surface as an ordinary non-zero-returncode result that callers
+    already handle, not an exception that could crash the GTK app's
+    Finish-setup banner or a bare `nearshare install`."""
+    try:
+        return subprocess.run(["gsettings", *args], capture_output=True,
+                              text=True, timeout=5.0)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return subprocess.CompletedProcess(args, 1, "", str(exc))
+
+
+def _gsettings_available() -> bool:
+    """True if the gsettings CLI is installed AND the media-keys schema
+    it needs is visible to this process (see the module comment above
+    for why that second check can fail even with gsettings itself
+    present, e.g. under snap confinement)."""
+    if shutil.which("gsettings") is None:
+        return False
+    try:
+        result = _run_gsettings(["list-schemas"])
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and _MEDIA_KEYS_SCHEMA in result.stdout.split()
+
+
+def _parse_gsettings_strv(text: str) -> list[str]:
+    """Parse gsettings' own literal syntax for an array of strings, e.g.
+    "@as []" (empty, type-annotated) or "['/a/', '/b/']" (a valid Python
+    list literal once the optional "@as " type prefix is stripped)."""
+    text = text.strip()
+    if text.startswith("@as "):
+        text = text[len("@as "):]
+    try:
+        value = ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def _custom_keybindings() -> list[str] | None:
+    """Current custom-keybindings path list, or None if the read failed."""
+    result = _run_gsettings(["get", _MEDIA_KEYS_SCHEMA, "custom-keybindings"])
+    if result.returncode != 0:
+        return None
+    return _parse_gsettings_strv(result.stdout)
+
+
+def _keybinding_get(path: str, key: str) -> str | None:
+    result = _run_gsettings(["get", f"{_KEYBINDING_SCHEMA}:{path}", key])
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip().strip("'\"")
+
+
+def _write_custom_keybindings_list(paths: list[str]) -> bool:
+    value = ("[" + ", ".join(f"'{p}'" for p in paths) + "]") if paths else "@as []"
+    result = _run_gsettings(["set", _MEDIA_KEYS_SCHEMA, "custom-keybindings", value])
+    if result.returncode != 0:
+        print(f"  gsettings set custom-keybindings failed: {result.stderr.strip()}")
+        return False
+    return True
+
+
+def _find_binding_conflict(existing_paths: list[str], accel: str) -> str | None:
+    """Return the display name of whatever *other* custom keybinding
+    already uses `accel`, or None if the combo is free -- so we never
+    clobber an unrelated shortcut that happens to sit on the same key."""
+    for path in existing_paths:
+        if path == _KEYBINDING_PATH:
+            continue
+        if _keybinding_get(path, "binding") == accel:
+            return _keybinding_get(path, "name") or path
+    return None
+
+
+def _shortcut_is_ours() -> bool:
+    """True if our keybinding is currently registered and pointed at our
+    own launcher (used by `nearshare install`'s idempotency check and by
+    the GUI's integration_status())."""
+    if not _gsettings_available():
+        return False
+    existing = _custom_keybindings()
+    if existing is None or _KEYBINDING_PATH not in existing:
+        return False
+    return _keybinding_get(_KEYBINDING_PATH, "command") == _wanted_shortcut_command()
+
+
+def bound_shortcut_accelerator() -> str | None:
+    """The accelerator string currently bound at our keybinding path (in
+    raw gsettings syntax, e.g. "<Control><Alt>n"), or None if nothing of
+    ours is bound -- used by the GUI to show the actual accelerator in
+    human-readable form via accelerator_label()."""
+    if not _shortcut_is_ours():
+        return None
+    return _keybinding_get(_KEYBINDING_PATH, "binding")
+
+
+def _wanted_shortcut_command() -> str:
+    return f"{_installed_bin_path()} toggle"
+
+
+def _bind_shortcut(key: str | None = None) -> None:
+    """Bind `key` (default DEFAULT_SHORTCUT_BINDING) to `nearshare
+    toggle` as a GNOME custom keybinding. Safe to call repeatedly: does
+    nothing if already bound to us with this same key, updates the
+    entry if our launcher's path or the requested key changed, and
+    refuses (with a warning) to touch a key combo something else
+    already owns. Rejects a syntactically invalid `key` (from
+    `nearshare install --key`) up front, before writing anything."""
+    accel = key or DEFAULT_SHORTCUT_BINDING
+    error = validate_accelerator(accel)
+    if error is not None:
+        print(f"  invalid --key value: {error}")
+        return
+    label = accelerator_label(accel)
+
+    if not _gsettings_available():
+        print("  skipped: the GNOME media-keys gsettings schema isn't "
+             "available in this environment (see docs/SHORTCUT.md to "
+             "bind it manually)")
+        return
+    existing = _custom_keybindings()
+    if existing is None:
+        print("  skipped: couldn't read existing GNOME keybindings "
+             "(gsettings failed)")
+        return
+
+    wanted_command = _wanted_shortcut_command()
+    if _KEYBINDING_PATH in existing:
+        current_command = _keybinding_get(_KEYBINDING_PATH, "command")
+        current_binding = _keybinding_get(_KEYBINDING_PATH, "binding")
+        if current_command == wanted_command and current_binding == accel:
+            print(f"  keyboard shortcut already bound: {label} -> "
+                 f"{wanted_command}")
+            return
+        # Ours, but stale (e.g. the launcher moved, or --key changed) --
+        # refresh it.
+        if _write_keybinding_entry(accel):
+            print(f"  updated keyboard shortcut: {label} -> {wanted_command}")
+        return
+
+    conflict = _find_binding_conflict(existing, accel)
+    if conflict is not None:
+        print(f"  NOTE: {label} is already bound to {conflict!r}; leaving "
+             "it alone. Pass a different --key to `nearshare install` if "
+             "you want NearShare's toggle shortcut too.")
+        return
+
+    if _write_custom_keybindings_list(existing + [_KEYBINDING_PATH]) and \
+            _write_keybinding_entry(accel):
+        print(f"  bound {label} to toggle visibility ({wanted_command})")
+
+
+def _write_keybinding_entry(accel: str) -> bool:
+    for key, value in (("name", _SHORTCUT_NAME), ("command", _wanted_shortcut_command()),
+                       ("binding", accel)):
+        result = _run_gsettings(["set", f"{_KEYBINDING_SCHEMA}:{_KEYBINDING_PATH}",
+                                 key, value])
+        if result.returncode != 0:
+            print(f"  gsettings set {key} failed: {result.stderr.strip()}")
+            return False
+    return True
+
+
+def _unbind_shortcut() -> None:
+    """Remove the keybinding `_bind_shortcut` created, if any. Never
+    touches a binding at our key path that isn't ours, and never fails
+    uninstall -- gsettings being unavailable just means there was
+    nothing of ours to remove."""
+    if not _gsettings_available():
+        print("  skipped: the GNOME media-keys gsettings schema isn't "
+             "available in this environment")
+        return
+    existing = _custom_keybindings()
+    if existing is None:
+        print("  skipped: couldn't read existing GNOME keybindings "
+             "(gsettings failed)")
+        return
+    if _KEYBINDING_PATH not in existing:
+        print("  no keyboard shortcut to remove (already unbound)")
+        return
+    label = accelerator_label(
+        _keybinding_get(_KEYBINDING_PATH, "binding") or DEFAULT_SHORTCUT_BINDING)
+    remaining = [p for p in existing if p != _KEYBINDING_PATH]
+    if not _write_custom_keybindings_list(remaining):
+        return
+    for key in ("name", "command", "binding"):
+        _run_gsettings(["reset", f"{_KEYBINDING_SCHEMA}:{_KEYBINDING_PATH}", key])
+    print(f"  removed keyboard shortcut ({label})")
+
+
+# --------------------------------------------------------- install/uninstall
+
+def _fs_step(fn) -> bool:
+    """Run one filesystem install/uninstall step, catching PermissionError
+    so a locked-down ~/.local (or anything else denying access) prints a
+    readable one-line message instead of an unhandled traceback. Returns
+    False if the step failed."""
+    try:
+        fn()
+        return True
+    except PermissionError as exc:
+        path = exc.filename or str(exc)
+        print(f"  permission denied: {path} -- skipping this step "
+             "(fix the permissions, or run from an account that owns "
+             "that path, and re-run install)")
+        return False
+
+
+def _skip(what: str, reason: str) -> None:
+    print(f"  skipped: {what} -- {reason}")
+
+
+_SNAP_HOME_REASON = ("strict snap confinement's `home` interface doesn't "
+                     "grant access to hidden dot-directories under $HOME")
+
+
+def integration_status() -> dict[str, Any]:
+    """What `nearshare install` has already accomplished -- used by its
+    own idempotency messages and by the GTK app's Finish-setup banner
+    (nearshare/ui/app.py) to decide what to show. `complete` accounts for
+    the snap's structural limits: under snap, desktop entries/Nautilus
+    integration can never be done from inside the app (see module
+    docstring), so completeness there only requires what IS possible
+    (the launcher already being on PATH via /snap/bin, and the
+    shortcut)."""
+    snap = _in_snap()
+    launcher_on_path = shutil.which("nearshare") is not None
+    desktop_entries = all((_applications_dir() / name).exists()
+                          for name in _desktop_file_names())
+    nautilus = ((_nautilus_scripts_dir() / NAUTILUS_SCRIPT_NAME).exists() or
+               (_nautilus_extensions_dir() / "nearshare_menu.py").exists())
+    shortcut = _shortcut_is_ours()
+    shortcut_accel = bound_shortcut_accelerator() if shortcut else None
+    if snap:
+        complete = launcher_on_path and shortcut
+    else:
+        complete = launcher_on_path and desktop_entries and nautilus and shortcut
+    return {"snap": snap, "launcher_on_path": launcher_on_path,
+            "desktop_entries": desktop_entries, "nautilus": nautilus,
+            "shortcut": shortcut, "shortcut_accel": shortcut_accel,
+            "complete": complete}
+
+
+def _install_snap(shortcut: bool, key: str | None) -> int:
+    print("Installing NearShare desktop integration (running inside the "
+         "snap)...")
+    print("[1/2] CLI launcher symlink, desktop entries, Nautilus integration")
+    _skip("~/.local/bin launcher symlink", _SNAP_HOME_REASON +
+         " (the snap's own launcher is already on PATH as `nearshare`)")
+    _skip("desktop entries + app icon (~/.local/share)", _SNAP_HOME_REASON)
+    _skip("Nautilus \"Send with NearShare\" script", _SNAP_HOME_REASON)
+    _skip("Nautilus top-level right-click item (extension)", _SNAP_HOME_REASON)
+    print(f"[2/2] Keyboard shortcut ({accelerator_label(key or DEFAULT_SHORTCUT_BINDING)}"
+         " -> toggle visibility)")
+    if shortcut:
+        _bind_shortcut(key)
+    else:
+        print("  --no-shortcut passed; leaving any existing binding alone")
+    print("\nInstall complete for everything possible from inside the snap.")
+    print("For right-click \"Send with NearShare\" in Files, install the "
+         "Debian package instead:")
+    print("    sudo add-apt-repository ppa:dhiva-labs/apps")
+    print("    sudo apt install nearshare")
+    return 0
+
+
+def _install_full(shortcut: bool, key: str | None) -> int:
     print("Installing NearShare desktop integration...")
     print("[1/5] CLI launcher symlink")
-    _install_symlink()
+    _fs_step(_install_symlink)
     print("[2/5] Desktop entries + app icon (~/.local/share)")
-    _remove_legacy_desktop_files()
-    _install_desktop_files()
-    _install_icon()
+    _fs_step(_remove_legacy_desktop_files)
+    _fs_step(_install_desktop_files)
+    _fs_step(_install_icon)
     print("[3/5] Nautilus \"Send with NearShare\" script (Scripts submenu)")
-    _install_nautilus_script()
+    _fs_step(_install_nautilus_script)
     print("[4/5] Nautilus top-level right-click item (extension)")
-    _install_nautilus_extension()
-    print("[5/5] Keyboard shortcut (manual step -- nothing run automatically)")
-    _print_shortcut_commands()
+    _fs_step(_install_nautilus_extension)
+    print(f"[5/5] Keyboard shortcut ({accelerator_label(key or DEFAULT_SHORTCUT_BINDING)}"
+         " -> toggle visibility)")
+    if shortcut:
+        _bind_shortcut(key)
+    else:
+        print("  --no-shortcut passed; leaving any existing binding alone")
     print("\nInstall complete.")
     return 0
 
 
-def cmd_uninstall(args: argparse.Namespace) -> int:
+def _run_install(shortcut: bool, key: str | None = None) -> int:
+    if _in_snap():
+        return _install_snap(shortcut, key)
+    return _install_full(shortcut, key)
+
+
+def run_install(shortcut: bool = True, key: str | None = None) -> str:
+    """Run the same install logic `nearshare install` uses, capturing its
+    printed output as a string instead of writing to stdout -- what the
+    GTK app's Finish-setup button (nearshare/ui/app.py) calls, since it
+    has no terminal to show output in."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _run_install(shortcut, key)
+    return buf.getvalue()
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    key = getattr(args, "key", None)
+    if key is not None:
+        error = validate_accelerator(key)
+        if error is not None:
+            print(f"invalid --key value: {error}", file=sys.stderr)
+            return 1
+    return _run_install(getattr(args, "shortcut", True), key)
+
+
+def _uninstall_snap() -> int:
+    print("Uninstalling NearShare desktop integration (running inside the "
+         "snap)...")
+    print("[1/2] CLI launcher symlink, desktop entries, Nautilus integration")
+    _skip("~/.local/bin launcher symlink", _SNAP_HOME_REASON)
+    _skip("desktop entries + app icon", _SNAP_HOME_REASON)
+    _skip("Nautilus \"Send with NearShare\" script", _SNAP_HOME_REASON)
+    _skip("Nautilus extension", _SNAP_HOME_REASON)
+    print("[2/2] Keyboard shortcut")
+    _unbind_shortcut()
+    print("\nUninstall complete for everything possible from inside the "
+         "snap.")
+    return 0
+
+
+def _uninstall_full() -> int:
     print("Uninstalling NearShare desktop integration...")
-    print("[1/4] CLI launcher symlink")
-    _uninstall_symlink()
-    print("[2/4] Desktop entries + app icon")
-    _remove_legacy_desktop_files()
-    _uninstall_desktop_files()
-    _uninstall_icon()
-    print("[3/4] Nautilus \"Send with NearShare\" script")
-    _uninstall_nautilus_script()
-    print("[4/4] Nautilus extension")
-    _uninstall_nautilus_extension()
+    print("[1/5] CLI launcher symlink")
+    _fs_step(_uninstall_symlink)
+    print("[2/5] Desktop entries + app icon")
+    _fs_step(_remove_legacy_desktop_files)
+    _fs_step(_uninstall_desktop_files)
+    _fs_step(_uninstall_icon)
+    print("[3/5] Nautilus \"Send with NearShare\" script")
+    _fs_step(_uninstall_nautilus_script)
+    print("[4/5] Nautilus extension")
+    _fs_step(_uninstall_nautilus_extension)
+    print("[5/5] Keyboard shortcut")
+    _unbind_shortcut()
     print("\nUninstall complete.")
     return 0
+
+
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    if _in_snap():
+        return _uninstall_snap()
+    return _uninstall_full()
 
 
 # -------------------------------------------------------------- picker
@@ -823,8 +1252,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "install",
-        help="install the PATH symlink, .desktop launchers, and Nautilus "
-            "right-click script (idempotent)")
+        help="install the PATH symlink, .desktop launchers, Nautilus "
+            "right-click script, and keyboard shortcut (idempotent; "
+            "does whatever subset is possible when run inside the snap)")
+    p.add_argument(
+        "--shortcut", action=argparse.BooleanOptionalAction, default=True,
+        help=f"bind a keyboard shortcut to toggle visibility, default "
+            f"{DEFAULT_SHORTCUT_BINDING} i.e. Ctrl+Alt+N (default: yes); "
+            "--no-shortcut leaves any existing binding alone")
+    p.add_argument(
+        "--key", metavar="ACCELERATOR", default=None,
+        help="use this accelerator instead of the default, e.g. "
+            "\"<Control><Alt>s\" (GTK/gsettings accelerator syntax: "
+            "modifiers in angle brackets, then a key name); rejected "
+            "with an error if it doesn't parse as a valid accelerator")
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser(

@@ -59,6 +59,20 @@ override_dh_auto_install:
 	mkdir -p debian/nearshare/usr/share/icons/hicolor/scalable/apps
 	install -m 0644 data/icons/dev.dhivalabs.nearshare.svg \
 		debian/nearshare/usr/share/icons/hicolor/scalable/apps/
+	# System-wide nautilus-python extension: makes the top-level
+	# "Send with NearShare" right-click item work for every user with
+	# no per-user `nearshare install` step. /usr/share/nautilus-python/
+	# extensions is one of nautilus-python's built-in search paths
+	# (confirmed via `dpkg -L python3-nautilus`, which ships that exact
+	# directory, and /usr/share/doc/python3-nautilus/README.Debian,
+	# which documents it as "all-user plugin directory" -- see
+	# packaging/DEB.md). debian/extra/nearshare_menu.py is a hand-kept
+	# copy of nearshare/cli.py's _NAUTILUS_EXTENSION_TEMPLATE with the
+	# launcher path hardcoded to /usr/bin/nearshare instead of filled in
+	# per-user.
+	mkdir -p debian/nearshare/usr/share/nautilus-python/extensions
+	install -m 0644 debian/extra/nearshare_menu.py \
+		debian/nearshare/usr/share/nautilus-python/extensions/
 
 override_dh_auto_clean:
 	dh_auto_clean

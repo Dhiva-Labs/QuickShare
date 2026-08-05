@@ -24,12 +24,16 @@ Depends: ${misc:Depends},
 # a nearby Android phone notice this machine proactively. Both features
 # degrade gracefully (mDNS-only, no Direct mode) when their backend is
 # missing, so neither is a hard Depends.
-Recommends: network-manager, bluez
 # The Nautilus right-click "Send with NearShare" top-level menu item
-# (nearshare/cli.py's _install_nautilus_extension) needs python3-nautilus
-# to load; without it, `nearshare install` still wires up the Scripts
-# submenu fallback, which needs nothing extra.
-Suggests: python3-nautilus
+# (debian/extra/nearshare_menu.py, installed system-wide at
+# /usr/share/nautilus-python/extensions/) needs python3-nautilus to
+# load. It's a Recommends (not a Depends) so apt installs it by default
+# on a normal `apt install`/`apt install ./nearshare_*.deb` -- but the
+# package still installs and everything else still works if it's
+# declined or later removed; Nautilus just silently skips loading the
+# extension file, same as it does with any nautilus-python extension
+# when the interpreter/bindings aren't present.
+Recommends: network-manager, bluez, python3-nautilus
 Description: Quick Share (Nearby Share) for the GNOME desktop
  NearShare is a GTK4/libadwaita implementation of Google's Quick Share
  (formerly Nearby Share) wire protocol for Linux. It speaks the same mDNS

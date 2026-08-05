@@ -35,6 +35,43 @@ def control_socket_path() -> Path:
     return Path(runtime) / "nearshare.sock"
 
 
+class AlreadyRunning(RuntimeError):
+    """Another instance already owns the control socket.
+
+    Without this check every launch would happily start a second full
+    service: a second mDNS advertisement, a second TCP listener and a
+    second BLE beacon, so phones list this machine once per running
+    instance. Raised by start() before anything is advertised.
+    """
+
+
+async def _instance_is_alive(path: Path) -> bool:
+    """True if something is actually serving the control socket.
+
+    A socket file left behind by a killed process still `exists()`, so
+    liveness has to be probed by connecting, not by stat-ing.
+    """
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_unix_connection(str(path)), timeout=2)
+    except (ConnectionRefusedError, FileNotFoundError, OSError,
+            asyncio.TimeoutError):
+        return False
+    try:
+        writer.write(json.dumps({"cmd": "status"}).encode() + b"\n")
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), timeout=2)
+        return bool(line.strip())
+    except (OSError, asyncio.TimeoutError):
+        return False
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, asyncio.TimeoutError):
+            pass
+
+
 def default_device_name() -> str:
     return f"{os.environ.get('USER', 'user')}@{socket.gethostname()}"
 
@@ -189,6 +226,11 @@ class NearShareService:
     async def _start_control_socket(self) -> None:
         path = control_socket_path()
         if path.exists():
+            if await _instance_is_alive(path):
+                raise AlreadyRunning(
+                    "another NearShare instance is already running")
+            # Nothing listening: a previous run was killed without
+            # cleaning up. Safe to take the stale socket over.
             path.unlink()
         self._control = await asyncio.start_unix_server(
             self._handle_control, path=str(path))

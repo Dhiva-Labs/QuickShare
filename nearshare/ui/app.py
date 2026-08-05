@@ -17,6 +17,7 @@ into the service goes back out via `self.app.asyncio_thread.run_coroutine`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -30,12 +31,16 @@ gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+from .. import cli  # noqa: E402
 from ..core.connection import Events, TransferRequest  # noqa: E402
 from ..core.hotspot import Hotspot, HotspotError  # noqa: E402
 from ..core.mdns import Peer  # noqa: E402
 from ..core.service import NearShareService  # noqa: E402
 from .asyncio_glue import AsyncioThread, bridge_future_to_asyncio, idle  # noqa: E402
 from .qrcode import QrCodeArea, wifi_qr_payload  # noqa: E402
+
+_APT_INSTALL_COMMAND = ("sudo add-apt-repository ppa:dhiva-labs/apps && "
+                       "sudo apt install nearshare")
 
 log = logging.getLogger("nearshare.ui.app")
 
@@ -184,10 +189,126 @@ class NearShareWindow(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         scroller.set_child(page)
 
+        page.add(self._build_setup_group())
         page.add(self._build_visibility_group())
         page.add(self._build_devices_group())
         page.add(self._build_transfers_group())
         page.add(self._build_direct_mode_group())
+        self.refresh_setup_status()
+
+    def _build_setup_group(self) -> Adw.PreferencesGroup:
+        """The "Finish setup" group: lists whatever piece of `nearshare
+        install`'s desktop integration isn't done yet (launcher on PATH,
+        desktop entries, Nautilus integration, keyboard shortcut), with
+        one button that runs the same install logic to fix everything
+        fixable in this environment. Hidden entirely once
+        cli.integration_status() reports everything fixable here is
+        done -- see refresh_setup_status. Under snap, Nautilus
+        integration can never be fixed from inside the app (strict
+        confinement), so that row and the apt-get hint stay visible
+        until the user installs the .deb separately; they don't block
+        the group from being considered "complete" for what IS fixable
+        here (see cli.integration_status)."""
+        self.setup_group = Adw.PreferencesGroup(
+            title="Finish setup",
+            description="A few desktop-integration steps from `nearshare "
+                       "install` aren't done yet.")
+
+        self._setup_rows: dict[str, Adw.ActionRow] = {}
+        for key, title in (
+            ("launcher_on_path", "Command-line launcher on PATH"),
+            ("desktop_entries", "Desktop app entries (app grid, search)"),
+            ("nautilus", "Nautilus right-click “Send with NearShare”"),
+        ):
+            row = Adw.ActionRow(title=title, selectable=False)
+            row.add_prefix(
+                Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            self.setup_group.add(row)
+            self._setup_rows[key] = row
+
+        # The shortcut row stays visible even once bound (unlike the
+        # three above, which just disappear when done) so it always
+        # shows the actual accelerator in human-readable form (e.g.
+        # "Ctrl+Alt+N") rather than gsettings' raw "<Control><Alt>n" --
+        # see refresh_setup_status.
+        self._shortcut_row = Adw.ActionRow(title="Keyboard shortcut",
+                                           selectable=False)
+        self._shortcut_icon = Gtk.Image.new_from_icon_name(
+            "dialog-warning-symbolic")
+        self._shortcut_row.add_prefix(self._shortcut_icon)
+        self.setup_group.add(self._shortcut_row)
+
+        self._setup_deb_row = Adw.ActionRow(
+            title="Right-click integration needs the .deb build",
+            subtitle="Strict snap confinement can't write the Files "
+                    "(Nautilus) extension. Run in a terminal:",
+            selectable=False)
+        self._deb_command_entry = Gtk.Entry(
+            text=_APT_INSTALL_COMMAND, editable=False, hexpand=True,
+            valign=Gtk.Align.CENTER, css_classes=["monospace"])
+        copy_button = Gtk.Button(
+            icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER,
+            tooltip_text="Copy")
+        copy_button.connect(
+            "clicked", lambda _b: self._copy_to_clipboard(_APT_INSTALL_COMMAND))
+        self._setup_deb_box = Gtk.Box(spacing=6, margin_top=6, margin_bottom=6,
+                                      margin_start=12, margin_end=12)
+        self._setup_deb_box.append(self._deb_command_entry)
+        self._setup_deb_box.append(copy_button)
+        self.setup_group.add(self._setup_deb_row)
+        self.setup_group.add(self._setup_deb_box)
+
+        self._setup_button = Gtk.Button(
+            label="Finish setup", css_classes=["suggested-action"],
+            halign=Gtk.Align.END, margin_top=6, margin_bottom=6)
+        self._setup_button.connect("clicked", self._on_finish_setup_clicked)
+        button_box = Gtk.Box(halign=Gtk.Align.END)
+        button_box.append(self._setup_button)
+        self.setup_group.add(button_box)
+
+        return self.setup_group
+
+    def refresh_setup_status(self) -> None:
+        """Re-check cli.integration_status() and show/hide the Finish-
+        setup group and its per-item rows accordingly. Called on
+        startup and again after the Finish-setup button's install run
+        completes."""
+        status = cli.integration_status()
+        for key, row in self._setup_rows.items():
+            row.set_visible(not status[key])
+
+        if status["shortcut"] and status["shortcut_accel"]:
+            label = cli.accelerator_label(status["shortcut_accel"])
+            self._shortcut_row.set_subtitle(f"Bound: {label}")
+            self._shortcut_icon.set_from_icon_name("emblem-ok-symbolic")
+        else:
+            default_label = cli.accelerator_label(cli.DEFAULT_SHORTCUT_BINDING)
+            self._shortcut_row.set_subtitle(
+                f"Not bound yet — Finish setup will bind {default_label}")
+            self._shortcut_icon.set_from_icon_name("dialog-warning-symbolic")
+
+        show_deb_hint = status["snap"] and not status["nautilus"]
+        self._setup_deb_row.set_visible(show_deb_hint)
+        self._setup_deb_box.set_visible(show_deb_hint)
+        self.setup_group.set_visible(not status["complete"])
+
+    def _on_finish_setup_clicked(self, _button: Gtk.Button) -> None:
+        self._setup_button.set_sensitive(False)
+        self._setup_button.set_label("Working…")
+
+        async def _do() -> str:
+            return await asyncio.to_thread(cli.run_install)
+
+        def after(_result: str | None, exc: BaseException | None) -> None:
+            self._setup_button.set_sensitive(True)
+            self._setup_button.set_label("Finish setup")
+            if exc is not None:
+                self.toast(f"Setup couldn't finish: {exc}")
+            else:
+                self.toast("Setup finished")
+            self.refresh_setup_status()
+
+        self.app.asyncio_thread.run_coroutine(_do(), after)
 
     def _build_visibility_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup()

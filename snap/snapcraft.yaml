@@ -1,6 +1,6 @@
 name: nearshare
 title: NearShare
-version: '1.0.2'
+version: '1.0.3'
 summary: Share files with nearby Android, Windows, macOS, and Linux devices
 description: |
   NearShare speaks Google's Quick Share / Nearby Share wire protocol
@@ -23,15 +23,35 @@ description: |
   manual PIN confirmation on both devices -- there is no persistent
   cross-device trust (no Google-account "paired key" support).
 
-  See packaging/SNAP.md in the source tree for the full list of snap
-  interfaces this needs and why, including two confinement caveats worth
-  knowing before you install: the Nautilus right-click "Send with
-  NearShare" integration cannot be installed by a strictly-confined
-  snap (use the .deb or a from-source install for that), and the
-  `nearshare install`/`uninstall` CLI subcommands mostly no-op here
-  because they target dotfile paths under $HOME (~/.local/bin,
-  ~/.local/share/applications, ~/.local/share/nautilus*) that the `home`
-  interface deliberately does not grant access to.
+  AFTER INSTALLING -- two commands
+  --------------------------------
+  Bluetooth discovery and Direct mode need interfaces that snapd does
+  not connect automatically. Run both, then start the app:
+
+    sudo snap connect nearshare:bluez
+    sudo snap connect nearshare:network-manager
+
+  Without bluez the app still works, but your phone may only see this
+  machine while the phone's own Quick Share screen is open. Without
+  network-manager, Direct mode (the built-in hotspot for when there is
+  no shared WiFi) is unavailable. Everything else -- discovery,
+  sending, receiving -- works with no extra setup.
+
+  Optional: a Super+Shift+S shortcut to toggle visibility can be bound
+  from the app's own setup panel, or with `nearshare install`.
+
+  Right-click "Send with NearShare" in Files
+  ------------------------------------------
+  Not available in the snap. Strict confinement forbids writing to
+  ~/.local/share/nautilus, so no snap can install a Files extension.
+  If you want right-click sharing, install the Debian package instead:
+
+    sudo add-apt-repository ppa:dhiva-labs/apps
+    sudo apt install nearshare
+
+  The .deb ships a system-wide Files extension and needs no per-user
+  setup. Both builds are the same application otherwise.
+
 icon: data/icons/dev.dhivalabs.nearshare.svg
 license: MIT
 grade: stable

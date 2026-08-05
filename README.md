@@ -248,8 +248,8 @@ after moving the checkout) and prints each step as it goes:
 - Installs a Nautilus script at `~/.local/share/nautilus/scripts/Send
   with NearShare` — see [Right-click sharing](#right-click-sharing-nautilus).
   Restart Nautilus (`nautilus -q`) for it to show up.
-- Prints (but does not run) the `gsettings` commands to bind
-  Super+Shift+S to the visibility toggle — see
+- Binds
+  Ctrl+Alt+N to the visibility toggle — see
   [docs/SHORTCUT.md](docs/SHORTCUT.md) for the full explanation and a
   point-and-click alternative.
 
@@ -338,7 +338,7 @@ as any other send.
 
 See [docs/SHORTCUT.md](docs/SHORTCUT.md) for exact GNOME Settings steps
 and a copy-paste `gsettings` one-liner to bind a key (suggested:
-Super+Shift+S) to `nearshare toggle` — or just run `bin/nearshare
+Ctrl+Alt+N) to `nearshare toggle` — or just run `bin/nearshare
 install`, which prints the same commands (see [Install](#install)).
 
 ## Direct mode (experimental)
