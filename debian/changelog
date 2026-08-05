@@ -1,3 +1,9 @@
+quickshare (1.0.0~noble1) noble; urgency=medium
+
+  * PPA build for Ubuntu 24.04 (noble).
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 04:16:20 +0530
+
 quickshare (1.0.0-1) noble; urgency=medium
 
   * Initial release.

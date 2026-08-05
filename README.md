@@ -396,3 +396,33 @@ covered further here.
   which forces PIN confirmation on *every single transfer* — there is
   no way to mark a device as permanently trusted. This is a deliberate
   simplification, not a missing feature to be worked around.
+
+## Trademarks and credits
+
+**Quick Share** and **Nearby Share** are trademarks of Google LLC and
+Samsung Electronics Co., Ltd. This project is **not** affiliated with,
+endorsed by, or sponsored by Google or Samsung. Those names are used
+here only nominatively — to describe the protocol this software
+interoperates with — and not as branding for this application or as any
+claim of origin.
+
+This is an independent, unofficial client that implements the publicly
+documented and community-reverse-engineered Nearby Share wire protocol
+for interoperability purposes.
+
+### Credits
+
+- **Google LLC** — the Nearby Connections / Nearby Share wire-format
+  schemas in `protos/` are Apache-2.0 licensed and are used unmodified,
+  with their original copyright headers intact. See `debian/copyright`.
+- **[NearDrop](https://github.com/grishka/NearDrop)** by Grishka — the
+  reference macOS implementation whose published protocol notes and
+  protobuf schema set documented the UKEY2 handshake, the paired-key
+  `UNABLE` fallback, and the mDNS instance-name encoding.
+- **[rquickshare](https://github.com/Martichou/rquickshare)** by
+  Martichou — the reference Rust implementation, source of the BLE
+  trigger beacon payload and service UUID used in
+  `quickshare/core/ble.py`.
+
+Without those two projects' public documentation of the protocol, this
+implementation would not exist.
