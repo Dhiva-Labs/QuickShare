@@ -17,9 +17,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from quickshare.core.connection import Events, OutboundConnection, TransferRequest
-from quickshare.core.mdns import encode_instance_name
-from quickshare.core.service import QuickShareService
+from nearshare.core.connection import Events, OutboundConnection, TransferRequest
+from nearshare.core.mdns import encode_instance_name
+from nearshare.core.service import NearShareService
 
 
 def sha256(path: Path) -> str:
@@ -34,7 +34,7 @@ async def main() -> int:
     big = tmp / "big.bin"
     big.write_bytes(os.urandom(1536 * 1024))
     small = tmp / "notes.txt"
-    small.write_text("hello from quickshare loopback\n")
+    small.write_text("hello from nearshare loopback\n")
 
     receiver_pin: list[str] = []
     received: list[Path] = []
@@ -55,7 +55,7 @@ async def main() -> int:
         on_text=lambda dev, text: got_text.append(text),
     )
 
-    service = QuickShareService(device_name="loopback-receiver",
+    service = NearShareService(device_name="loopback-receiver",
                                 download_dir=downloads, events=recv_events)
     await service.start(visible=False)  # direct connect; mDNS tested below
     assert service.port
@@ -88,7 +88,7 @@ async def main() -> int:
     found = asyncio.Event()
     instance = encode_instance_name(service.endpoint_id)
 
-    from quickshare.core.mdns import Browser
+    from nearshare.core.mdns import Browser
     # include_self: production browsers filter out this machine's own
     # advertisements; here discovering ourselves is the whole point.
     browser = Browser(on_change=lambda peers: found.set() if any(

@@ -1,18 +1,18 @@
-quickshare (1.0.0~noble1) noble; urgency=medium
+nearshare (1.0.0~noble1) noble; urgency=medium
 
   * PPA build for Ubuntu 24.04 (noble).
 
  -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 04:16:20 +0530
 
-quickshare (1.0.0-1) noble; urgency=medium
+nearshare (1.0.0-1) noble; urgency=medium
 
   * Initial release.
   * mDNS discovery + BLE trigger advertising/scanning for two-way Quick
     Share presence signalling.
   * UKEY2 key exchange, AES-256-CBC + HMAC-SHA256 encrypted transfer
     framing, PIN confirmation on both ends.
-  * GTK4/libadwaita GUI, `quickshare` CLI, and Nautilus right-click
-    "Send with QuickShare" integration.
+  * GTK4/libadwaita GUI, `nearshare` CLI, and Nautilus right-click
+    "Send with NearShare" integration.
   * Direct mode: ad-hoc WiFi hotspot fallback via NetworkManager when no
     WiFi network is shared with the peer.
 

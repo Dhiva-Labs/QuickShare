@@ -1,12 +1,12 @@
 # GNOME keyboard shortcut for visibility toggle
 
-QuickShare has no system tray icon (GNOME doesn't provide one), so the
+NearShare has no system tray icon (GNOME doesn't provide one), so the
 fastest way to flip "visible to nearby devices" on or off is a keyboard
-shortcut bound to `quickshare toggle`. It works whether the app is
+shortcut bound to `nearshare toggle`. It works whether the app is
 already running (it just flips visibility and fires a notification) or
 not (it starts the app for you) — see the CLI section of the README.
 
-**Shortest path**: run `bin/quickshare install` — as its last step it
+**Shortest path**: run `bin/nearshare install` — as its last step it
 prints the exact `gsettings` block from Option B below, already filled
 in with your installed launcher's path, ready to paste. `install` never
 runs these commands itself (they change your GNOME keybinding settings,
@@ -14,8 +14,8 @@ which is outside what an install script should silently do), it only
 prints them.
 
 Throughout, `<project>` means the absolute path to this repository, e.g.
-`/home/alice/quick_share`. If you installed `bin/quickshare` onto your
-`PATH` (see README → Install), you can use the bare command `quickshare`
+`/home/alice/near_share`. If you installed `bin/nearshare` onto your
+`PATH` (see README → Install), you can use the bare command `nearshare`
 instead of the full path.
 
 ## Option A — GNOME Settings (GUI)
@@ -25,8 +25,8 @@ instead of the full path.
    **Custom Shortcuts**.
 3. Click **+** (Add Shortcut).
 4. Fill in:
-   - **Name**: `QuickShare: Toggle Visibility`
-   - **Command**: `<project>/bin/quickshare toggle`
+   - **Name**: `NearShare: Toggle Visibility`
+   - **Command**: `<project>/bin/nearshare toggle`
    - **Shortcut**: press your desired key combination, e.g.
      **Super+Shift+S**.
 5. Click **Add**. Test it: press the shortcut and you should get a
@@ -42,10 +42,10 @@ Replace `<project>` with your actual repository path first (or run the
 `pwd`).
 
 ```bash
-# Run from inside the quick_share repository directory.
+# Run from inside the near_share repository directory.
 PROJECT_DIR="$(pwd)"
 KEY_BASE="org.gnome.settings-daemon.plugins.media-keys"
-KEY_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/quickshare-toggle/"
+KEY_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/nearshare-toggle/"
 
 # 1. Register the new custom keybinding path alongside any existing ones.
 existing="$(gsettings get "$KEY_BASE" custom-keybindings)"
@@ -58,13 +58,13 @@ gsettings set "$KEY_BASE" custom-keybindings "$new"
 
 # 2. Set the command, name, and key combination for it.
 gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
-    command "$PROJECT_DIR/bin/quickshare toggle"
+    command "$PROJECT_DIR/bin/nearshare toggle"
 gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
-    name "QuickShare: Toggle Visibility"
+    name "NearShare: Toggle Visibility"
 gsettings set "$KEY_BASE.custom-keybinding:$KEY_PATH" \
     binding "<Super><Shift>s"
 
-echo "Bound Super+Shift+S to: $PROJECT_DIR/bin/quickshare toggle"
+echo "Bound Super+Shift+S to: $PROJECT_DIR/bin/nearshare toggle"
 ```
 
 To remove it later, delete `$KEY_PATH` from the `custom-keybindings`
@@ -73,7 +73,7 @@ Shortcuts panel also shows and lets you delete it directly.
 
 ## Verifying it worked
 
-Run `<project>/bin/quickshare status` in a terminal — it should print
+Run `<project>/bin/nearshare status` in a terminal — it should print
 the current visibility, device name, and peer count if the app is
-running, or `QuickShare app is not running` otherwise. Then press your
+running, or `NearShare app is not running` otherwise. Then press your
 shortcut and run `status` again to confirm the state flipped.

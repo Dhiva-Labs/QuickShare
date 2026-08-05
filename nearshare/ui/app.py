@@ -1,5 +1,5 @@
-"""GTK4 + libadwaita front-end for QuickShare, built on the headless
-`QuickShareService` core (see core/service.py, core/connection.py,
+"""GTK4 + libadwaita front-end for NearShare, built on the headless
+`NearShareService` core (see core/service.py, core/connection.py,
 core/mdns.py).
 
 Implements PLAN.md's M2 UI flows: the visibility toggle, the nearby-
@@ -32,13 +32,13 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from ..core.connection import Events, TransferRequest  # noqa: E402
 from ..core.hotspot import Hotspot, HotspotError  # noqa: E402
 from ..core.mdns import Peer  # noqa: E402
-from ..core.service import QuickShareService  # noqa: E402
+from ..core.service import NearShareService  # noqa: E402
 from .asyncio_glue import AsyncioThread, bridge_future_to_asyncio, idle  # noqa: E402
 from .qrcode import QrCodeArea, wifi_qr_payload  # noqa: E402
 
-log = logging.getLogger("quickshare.ui.app")
+log = logging.getLogger("nearshare.ui.app")
 
-APP_ID = "dev.dhivalabs.quickshare"
+APP_ID = "dev.dhivalabs.nearshare"
 
 _DEVICE_TYPE_NAMES = {0: "Unknown device", 1: "Phone", 2: "Tablet", 3: "Laptop"}
 
@@ -54,7 +54,7 @@ def _human_size(n: int) -> str:
 
 class _TransferRow:
     """One row in the Transfers section, tracking a single (device,
-    direction) session -- see QuickShareWindow._active / _completed for
+    direction) session -- see NearShareWindow._active / _completed for
     how rows are keyed and retired."""
 
     def __init__(self, group: Adw.PreferencesGroup, title: str,
@@ -119,13 +119,13 @@ def _open_folder(folder: Path) -> None:
     Gio.AppInfo.launch_default_for_uri(uri, None)
 
 
-class QuickShareWindow(Adw.ApplicationWindow):
+class NearShareWindow(Adw.ApplicationWindow):
     """The single main window; closing it hides rather than destroys it
-    (see QuickShareApplication's hidden-window pattern) so the service
+    (see NearShareApplication's hidden-window pattern) so the service
     keeps serving the control socket/mDNS/TCP in the background."""
 
-    def __init__(self, application: "QuickShareApplication") -> None:
-        super().__init__(application=application, title="QuickShare",
+    def __init__(self, application: "NearShareApplication") -> None:
+        super().__init__(application=application, title="NearShare",
                          default_width=480, default_height=640)
         self.app = application
         self._peer_rows: dict[str, Adw.ActionRow] = {}
@@ -155,7 +155,7 @@ class QuickShareWindow(Adw.ApplicationWindow):
         self.set_content(toolbar_view)
 
         self.window_title = Adw.WindowTitle(
-            title="QuickShare", subtitle=self.app.service.device_name)
+            title="NearShare", subtitle=self.app.service.device_name)
         header = Adw.HeaderBar(title_widget=self.window_title)
 
         menu = Gio.Menu()
@@ -194,7 +194,7 @@ class QuickShareWindow(Adw.ApplicationWindow):
             description="Devices with Quick Share receiving open on the "
                         "same network.")
         # Subtle info row, shown only when BLE trigger advertising isn't
-        # available (see QuickShareApplication's post-start ble_status
+        # available (see NearShareApplication's post-start ble_status
         # query) -- without it, phones fall back to mDNS-only discovery,
         # which only works while their own Quick Share screen is open.
         self._ble_banner_row = Adw.ActionRow(
@@ -589,7 +589,7 @@ class QuickShareWindow(Adw.ApplicationWindow):
         self.toast_overlay.add_toast(Adw.Toast.new(message))
 
 
-class QuickShareApplication(Adw.Application):
+class NearShareApplication(Adw.Application):
     """Owns the service, the asyncio background thread, and the hotspot;
     the window is created lazily and hidden (not destroyed) on close so
     the service keeps running -- `app.hold()` is what keeps the process
@@ -600,8 +600,8 @@ class QuickShareApplication(Adw.Application):
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.asyncio_thread = AsyncioThread()
         self.hotspot = Hotspot()
-        self.service: QuickShareService | None = None
-        self.window: QuickShareWindow | None = None
+        self.service: NearShareService | None = None
+        self.window: NearShareWindow | None = None
 
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", lambda *_: self.quit())
@@ -624,7 +624,7 @@ class QuickShareApplication(Adw.Application):
             on_text=lambda dev, text: idle(
                 self._with_window(lambda w: w.show_text(dev, text))),
         )
-        self.service = QuickShareService(events=events)
+        self.service = NearShareService(events=events)
         self.service.on_visibility_changed = lambda visible: idle(
             self._with_window(lambda w: w.update_visibility(visible)))
         self.service.on_peers_changed = lambda peers: idle(
@@ -649,7 +649,7 @@ class QuickShareApplication(Adw.Application):
         # matching APP_ID; the explicit default covers X11 and non-GNOME.
         Gtk.Window.set_default_icon_name(APP_ID)
         if self.window is None:
-            self.window = QuickShareWindow(self)
+            self.window = NearShareWindow(self)
         self.window.present()
 
     def do_shutdown(self) -> None:
@@ -698,5 +698,5 @@ class QuickShareApplication(Adw.Application):
 
 
 def main() -> int:
-    app = QuickShareApplication()
+    app = NearShareApplication()
     return app.run(sys.argv)

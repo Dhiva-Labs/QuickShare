@@ -12,14 +12,14 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python="${1:-python3}"
 
 cd "$here"
-mkdir -p quickshare/proto
-"$python" -m grpc_tools.protoc -Iprotos --python_out=quickshare/proto \
+mkdir -p nearshare/proto
+"$python" -m grpc_tools.protoc -Iprotos --python_out=nearshare/proto \
     protos/*.proto
 
 # protoc emits absolute imports ("import securemessage_pb2"); rewrite them
-# to package-relative so the modules import correctly from quickshare.proto.
+# to package-relative so the modules import correctly from nearshare.proto.
 sed -i 's/^import \([a-z_]*_pb2\) as/from . import \1 as/' \
-    quickshare/proto/*_pb2.py
+    nearshare/proto/*_pb2.py
 
-touch quickshare/proto/__init__.py
-echo "generated $(ls quickshare/proto/*_pb2.py | wc -l) protobuf modules"
+touch nearshare/proto/__init__.py
+echo "generated $(ls nearshare/proto/*_pb2.py | wc -l) protobuf modules"

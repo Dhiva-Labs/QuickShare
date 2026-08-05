@@ -29,7 +29,7 @@ from ..proto import offline_wire_formats_pb2 as ow
 from ..proto import wire_format_pb2 as wf
 from .crypto import D2DCipher, HandshakeError, Ukey2Client, Ukey2Server
 
-log = logging.getLogger("quickshare.connection")
+log = logging.getLogger("nearshare.connection")
 
 CHUNK_SIZE = 512 * 1024
 KEEP_ALIVE_INTERVAL = 10.0

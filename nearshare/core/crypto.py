@@ -4,7 +4,7 @@ This is the interop-critical layer: it implements Google's UKEY2 key
 exchange (P256_SHA512 cipher) and the securegcm device-to-device
 SecureMessage framing exactly as Android's Quick Share stack does.
 References: google/ukey2 spec, securegcm D2DConnectionContextV1,
-NearDrop and rquickshare implementations.
+NearDrop and rnearshare implementations.
 
 Wire flow (over 4-byte big-endian length-prefixed frames):
     sender (client)                      receiver (server)

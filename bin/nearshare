@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# QuickShare CLI launcher.
+# NearShare CLI launcher.
 #
 # Resolves the project root relative to this script (so it works whether
 # it's run in place, symlinked onto PATH, or invoked from a .desktop
-# Exec= line) and execs the project's venv Python running quickshare.cli.
+# Exec= line) and execs the project's venv Python running nearshare.cli.
 
 set -euo pipefail
 
@@ -12,10 +12,10 @@ project_root="$(dirname "$(dirname "$script_path")")"
 venv_python="$project_root/.venv/bin/python"
 
 if [[ ! -x "$venv_python" ]]; then
-    echo "quickshare: no virtualenv at $project_root/.venv" \
+    echo "nearshare: no virtualenv at $project_root/.venv" \
         "- see README.md for setup" >&2
     exit 1
 fi
 
 cd "$project_root"
-exec "$venv_python" -m quickshare.cli "$@"
+exec "$venv_python" -m nearshare.cli "$@"

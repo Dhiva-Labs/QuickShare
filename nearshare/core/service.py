@@ -1,8 +1,8 @@
-"""QuickShareService: the headless core the GTK UI and CLI both drive.
+"""NearShareService: the headless core the GTK UI and CLI both drive.
 
 Owns the TCP receive server, the mDNS advertiser (visibility on/off), the
 mDNS browser (nearby peers), and outbound sends. Also serves a JSON-lines
-control socket at $XDG_RUNTIME_DIR/quickshare.sock so the `quickshare`
+control socket at $XDG_RUNTIME_DIR/nearshare.sock so the `nearshare`
 CLI can toggle visibility, query status, and start sends against the
 running app:
 
@@ -27,19 +27,19 @@ from .connection import (Events, InboundConnection, OutboundConnection,
                          random_endpoint_id)
 from .mdns import Advertiser, Browser, Peer
 
-log = logging.getLogger("quickshare.service")
+log = logging.getLogger("nearshare.service")
 
 
 def control_socket_path() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
-    return Path(runtime) / "quickshare.sock"
+    return Path(runtime) / "nearshare.sock"
 
 
 def default_device_name() -> str:
     return f"{os.environ.get('USER', 'user')}@{socket.gethostname()}"
 
 
-class QuickShareService:
+class NearShareService:
     def __init__(self, device_name: str | None = None,
                  download_dir: Path | None = None,
                  events: Events | None = None) -> None:
@@ -139,7 +139,7 @@ class QuickShareService:
             self._ble_notified_at = now
             try:
                 subprocess.Popen(
-                    ["notify-send", "-a", "QuickShare",
+                    ["notify-send", "-a", "NearShare",
                      "Quick Share activity nearby",
                      "A nearby device is using Quick Share. "
                      "Turn on visibility to receive."],

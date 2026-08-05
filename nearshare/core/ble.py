@@ -4,7 +4,7 @@ Android's Quick Share sheet listens for a BLE service-data advertisement
 on 16-bit UUID 0xFE2C before it aggressively browses mDNS. Without this
 "trigger" beacon, the phone may never (or only slowly) list an
 mDNS-only receiver. The payload below is the same static trigger
-rquickshare broadcasts; it carries no identity — actual discovery and
+rnearshare broadcasts; it carries no identity — actual discovery and
 transfer still happen over mDNS + TCP.
 
 Implemented against BlueZ's org.bluez.LEAdvertisingManager1 D-Bus API
@@ -23,17 +23,17 @@ from __future__ import annotations
 import logging
 import threading
 
-log = logging.getLogger("quickshare.ble")
+log = logging.getLogger("nearshare.ble")
 
 SERVICE_UUID = "0000fe2c-0000-1000-8000-00805f9b34fb"
-# Static Quick Share trigger payload (matches rquickshare's beacon).
+# Static Quick Share trigger payload (matches rnearshare's beacon).
 SERVICE_DATA = bytes([
     0xFC, 0x12, 0x8E, 0x01, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0xBF, 0x2D, 0x5B, 0xA0, 0xE1, 0xD8, 0x75, 0x24,
     0xCA, 0x00,
 ])
 
-_ADV_PATH = "/dev/dhivalabs/quickshare/advertisement0"
+_ADV_PATH = "/dev/dhivalabs/nearshare/advertisement0"
 
 _ADV_XML = """
 <node>
@@ -79,7 +79,7 @@ class BleAdvertiser:
             error: list[Exception] = []
             self._thread = threading.Thread(
                 target=self._run, args=(ready, error),
-                name="quickshare-ble", daemon=True)
+                name="nearshare-ble", daemon=True)
             self._thread.start()
             ready.wait(timeout=10)
             if error:
@@ -221,7 +221,7 @@ class BleScanner:
             error: list[Exception] = []
             self._thread = threading.Thread(
                 target=self._run, args=(ready, error),
-                name="quickshare-ble-scan", daemon=True)
+                name="nearshare-ble-scan", daemon=True)
             self._thread.start()
             ready.wait(timeout=15)
             if error:

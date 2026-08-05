@@ -1,14 +1,14 @@
-# QuickShare for Linux — Product Plan
+# NearShare for Linux — Product Plan
 
 ## 1. Vision
 
-QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the Ubuntu/GNOME desktop, so files move between an Android phone and a Linux machine as easily as they do between two Android devices — no cables, no cloud accounts, no third-party apps on the phone. Because we speak the wire protocol itself, the same app also interoperates with Windows Quick Share and macOS NearDrop. v1 targets LAN (same WiFi) transfers in both directions, with an experimental "Direct mode" hotspot for when no shared network exists, all wrapped in a native GTK4/libadwaita UI plus a CLI and keyboard shortcut for fast visibility toggling.
+NearShare for Linux brings Google's Quick Share (Nearby Share) protocol to the Ubuntu/GNOME desktop, so files move between an Android phone and a Linux machine as easily as they do between two Android devices — no cables, no cloud accounts, no third-party apps on the phone. Because we speak the wire protocol itself, the same app also interoperates with Windows Quick Share and macOS NearDrop. v1 targets LAN (same WiFi) transfers in both directions, with an experimental "Direct mode" hotspot for when no shared network exists, all wrapped in a native GTK4/libadwaita UI plus a CLI and keyboard shortcut for fast visibility toggling.
 
 ## 2. User stories
 
 - **US-1 Receive from phone**: As a Linux user, I select a photo on my Android phone, tap Quick Share, see my laptop in the device list, tap it, confirm a matching 4-digit PIN on the laptop, and the file lands in `~/Downloads`.
 - **US-2 Send to phone**: As a Linux user, I pick files in the app, see my phone appear as a nearby device (phone has its Quick Share receive screen open), select it, and the transfer completes with progress shown on both ends.
-- **US-3 Toggle visibility fast**: As a privacy-conscious user, I can make my machine visible/invisible in under two seconds — via a UI switch, `quickshare toggle` in a terminal, or a GNOME keyboard shortcut — so I'm only discoverable when I intend to be.
+- **US-3 Toggle visibility fast**: As a privacy-conscious user, I can make my machine visible/invisible in under two seconds — via a UI switch, `nearshare toggle` in a terminal, or a GNOME keyboard shortcut — so I'm only discoverable when I intend to be.
 - **US-4 No shared network**: As a user on a phone with no WiFi in common with my laptop (hotel, train), I enable Direct mode, scan the QR code on the laptop screen with my phone, and once the phone joins the laptop's hotspot the normal transfer flow works.
 - **US-5 Cross-platform interop**: As a mixed-OS user, I can exchange files with a Windows 11 machine running Quick Share and a Mac running NearDrop, because all three speak the same protocol.
 
@@ -24,7 +24,7 @@ QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the 
 7. On completion: notification with an "Open folder" action; files saved to `~/Downloads` (configurable in preferences); partial files from cancelled/failed transfers are deleted.
 
 ### 3.2 Send flow (Linux → phone)
-1. User clicks **Send** in the app (or runs `quickshare send <files>`); a GTK file chooser opens (skipped when files came from the CLI).
+1. User clicks **Send** in the app (or runs `nearshare send <files>`); a GTK file chooser opens (skipped when files came from the CLI).
 2. App shows a "Nearby devices" list, populated live from mDNS browsing. Empty-state text explains: "On the phone, open Quick Share receive (or the share sheet) so it becomes discoverable."
 3. User clicks the target device; connection + Ukey2 handshake run; the introduction frame (file names/sizes) is sent.
 4. Phone shows its accept prompt with PIN; user confirms on the phone.
@@ -32,8 +32,8 @@ QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the 
 
 ### 3.3 Visibility toggle
 - **UI**: A prominent libadwaita switch row on the main window ("Visible to nearby devices"). State changes take effect immediately (mDNS register/unregister + listener up/down).
-- **CLI**: `quickshare on|off|toggle|status` talks to the running app over the Unix control socket; `status` prints visibility, device name, and active transfer count; exits non-zero with a clear message if the app isn't running.
-- **Keyboard shortcut**: A GNOME custom shortcut bound to `quickshare toggle` (set up by an install script or documented one-liner); toggling fires a desktop notification stating the new state, since GNOME has no tray icon to reflect it.
+- **CLI**: `nearshare on|off|toggle|status` talks to the running app over the Unix control socket; `status` prints visibility, device name, and active transfer count; exits non-zero with a clear message if the app isn't running.
+- **Keyboard shortcut**: A GNOME custom shortcut bound to `nearshare toggle` (set up by an install script or documented one-liner); toggling fires a desktop notification stating the new state, since GNOME has no tray icon to reflect it.
 
 ### 3.4 Direct mode (experimental)
 1. User opens the **Direct mode** page and clicks Start; app creates a hotspot via `nmcli` (generated SSID + random WPA2 password).
@@ -45,7 +45,7 @@ QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the 
 
 - **M1 — Protocol core (Opus)**: Nearby Share protocol implemented as a UI-free Python library: mDNS advertise + browse, TCP framing, Ukey2 handshake (P-256/HKDF/AES-CBC/HMAC), PIN derivation, paired-key/introduction/transfer frames, send and receive state machines. **Done when** a loopback test (in-process sender ↔ receiver over localhost) transfers files of multiple sizes with correct hashes, and the public API (callbacks for discovery, incoming request, PIN, progress, completion) is stable enough for Sonnet to build on.
 - **M2 — UI receive + send (Sonnet on Opus's core)**: GTK4/libadwaita app implementing flows 3.1 and 3.2, including notifications, PIN dialog, device list, progress, cancel, and a preferences page (device name, download folder, visibility default). **Done when** real transfers with a physical Android phone work in both directions.
-- **M3 — CLI, shortcut, direct mode (Sonnet)**: Unix control socket in the app; `quickshare on|off|toggle|status|send`; GNOME shortcut setup; Direct mode per flow 3.4. **Done when** all CLI verbs work against the running app and a phone with no shared WiFi completes a transfer via Direct mode.
+- **M3 — CLI, shortcut, direct mode (Sonnet)**: Unix control socket in the app; `nearshare on|off|toggle|status|send`; GNOME shortcut setup; Direct mode per flow 3.4. **Done when** all CLI verbs work against the running app and a phone with no shared WiFi completes a transfer via Direct mode.
 - **M4 — Docs + polish (Sonnet, Opus reviews)**: README (install, usage, troubleshooting, interop notes), error-message pass, edge-case hardening (timeouts, disconnects, duplicate filenames, disk-full), packaging notes. **Done when** the acceptance checklist below passes end-to-end and a newcomer can install and complete a transfer using only the README.
 
 ## 5. Acceptance criteria
@@ -67,9 +67,9 @@ QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the 
 - [ ] Visibility switch OFF: laptop disappears from the phone's share sheet within ~15 s and new inbound connections are refused.
 
 ### M3 — CLI / shortcut / direct mode
-- [ ] `quickshare on|off|toggle` changes visibility in a running app and prints the new state; `status` output shows visibility and device name; each verb exits 0 on success.
+- [ ] `nearshare on|off|toggle` changes visibility in a running app and prints the new state; `status` output shows visibility and device name; each verb exits 0 on success.
 - [ ] All verbs exit non-zero with a helpful message when the app isn't running.
-- [ ] `quickshare send a.jpg b.pdf` opens the device picker with those files staged.
+- [ ] `nearshare send a.jpg b.pdf` opens the device picker with those files staged.
 - [ ] GNOME shortcut triggers a toggle and a notification announcing the new state.
 - [ ] Direct mode: hotspot starts, QR scan joins a phone with no prior shared network, a transfer completes, Stop restores the previous WiFi connection.
 - [ ] Direct mode failure (e.g., NetworkManager denies hotspot) shows an actionable error dialog.
@@ -84,7 +84,7 @@ QuickShare for Linux brings Google's Quick Share (Nearby Share) protocol to the 
 
 - **Protocol drift across Android versions**: Google can change frame details or the mDNS TXT format. *Mitigation*: keep the protocol layer isolated behind the M1 API, pin behavior to the .proto files in `protos/`, test against at least two Android versions, and track NearDrop/community findings for breaking changes.
 - **No BLE advertising in v1**: Android normally discovers receivers via BLE before consulting mDNS; without it, the phone only browses mDNS while its Quick Share sheet is open, and sometimes not reliably. *Mitigation*: set expectations in the UI ("keep the share sheet open") and README; this is the top candidate for v2.
-- **GNOME has no system tray**: no persistent indicator of visibility state. *Mitigation*: notification on every state change, clear switch state in the app window, `quickshare status` for scripting; optionally document popular AppIndicator extensions without depending on them.
+- **GNOME has no system tray**: no persistent indicator of visibility state. *Mitigation*: notification on every state change, clear switch state in the app window, `nearshare status` for scripting; optionally document popular AppIndicator extensions without depending on them.
 - **Hotspot needs NetworkManager permissions and capable hardware**: `nmcli` hotspot creation can fail on polkit rules or drivers lacking AP mode. *Mitigation*: preflight checks (AP-mode capability, NM reachable) before offering Start, actionable error messages, "Experimental" labeling, and guaranteed restore of the prior connection on stop/crash.
 - **mDNS blocked by firewall/VPN**: common cause of "nothing shows up". *Mitigation*: troubleshooting doc section with `ufw` rules and a `status`-level hint when zero peers are ever seen.
 

@@ -1,22 +1,22 @@
 #!/usr/bin/make -f
 
-# QuickShare is pure Python 3 -- there is no compile step. dh's build-system
+# NearShare is pure Python 3 -- there is no compile step. dh's build-system
 # autodetection finds nothing to do here (no setup.py/pyproject.toml, no
 # Makefile) and falls back to the "none" build system, which is exactly
 # what we want: every real step below is an override.
 #
 # We deliberately do NOT install via dh-python/pybuild into dist-packages:
 # upstream ships no setup.py or pyproject.toml (see packaging/DEB.md for
-# why one wasn't added just for packaging), so instead the whole quickshare/
-# package tree is installed under /usr/share/quickshare and a thin
-# /usr/bin/quickshare wrapper (debian/quickshare.wrapper) runs it with
+# why one wasn't added just for packaging), so instead the whole nearshare/
+# package tree is installed under /usr/share/nearshare and a thin
+# /usr/bin/nearshare wrapper (debian/nearshare.wrapper) runs it with
 # PYTHONPATH pointed there -- the same "wrapper + versioned install dir"
 # shape used by the BranchPilot .deb in this house.
 
 %:
 	dh $@
 
-# The generated protobuf bindings (quickshare/proto/*_pb2.py) are gitignored
+# The generated protobuf bindings (nearshare/proto/*_pb2.py) are gitignored
 # upstream on purpose: they are tied to the exact protobuf runtime version
 # that generated them (see the ValidateProtobufRuntimeVersion() call in any
 # generated module), so shipping ones generated against a developer's pip
@@ -32,13 +32,13 @@ override_dh_auto_build:
 		echo '           sudo apt install python3-grpc-tools' >&2; \
 		exit 1; \
 	}
-	rm -f quickshare/proto/*_pb2.py
+	rm -f nearshare/proto/*_pb2.py
 	tools/genproto.sh python3
 
 override_dh_auto_test:
 	# tests/test_loopback.py and tests/test_cli.py drive a real
-	# QuickShareService over 127.0.0.1 sockets (and, transitively,
-	# BLE/D-Bus via quickshare.core.ble) -- not guaranteed to work inside
+	# NearShareService over 127.0.0.1 sockets (and, transitively,
+	# BLE/D-Bus via nearshare.core.ble) -- not guaranteed to work inside
 	# a network-isolated/unprivileged build chroot, and no different from
 	# the upstream test suite one runs by hand with the dev .venv (see
 	# each test file's own "Run:" docstring line). Skipped at package
@@ -46,21 +46,21 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	dh_auto_install
-	mkdir -p debian/quickshare/usr/share/quickshare
-	cp -a quickshare debian/quickshare/usr/share/quickshare/
-	find debian/quickshare/usr/share/quickshare -name '__pycache__' \
+	mkdir -p debian/nearshare/usr/share/nearshare
+	cp -a nearshare debian/nearshare/usr/share/nearshare/
+	find debian/nearshare/usr/share/nearshare -name '__pycache__' \
 		-prune -exec rm -rf {} +
-	mkdir -p debian/quickshare/usr/bin
-	install -m 0755 debian/quickshare.wrapper \
-		debian/quickshare/usr/bin/quickshare
-	mkdir -p debian/quickshare/usr/share/applications
+	mkdir -p debian/nearshare/usr/bin
+	install -m 0755 debian/nearshare.wrapper \
+		debian/nearshare/usr/bin/nearshare
+	mkdir -p debian/nearshare/usr/share/applications
 	install -m 0644 data/*.desktop \
-		debian/quickshare/usr/share/applications/
-	mkdir -p debian/quickshare/usr/share/icons/hicolor/scalable/apps
-	install -m 0644 data/icons/dev.dhivalabs.quickshare.svg \
-		debian/quickshare/usr/share/icons/hicolor/scalable/apps/
+		debian/nearshare/usr/share/applications/
+	mkdir -p debian/nearshare/usr/share/icons/hicolor/scalable/apps
+	install -m 0644 data/icons/dev.dhivalabs.nearshare.svg \
+		debian/nearshare/usr/share/icons/hicolor/scalable/apps/
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f quickshare/proto/*_pb2.py
+	rm -f nearshare/proto/*_pb2.py
 	find . -name '__pycache__' -prune -exec rm -rf {} +

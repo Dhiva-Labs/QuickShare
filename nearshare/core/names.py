@@ -7,7 +7,7 @@ name in its ConnectionRequest endpoint info. Remember it, keyed by IP —
 the only stable-ish identifier across sessions on a home LAN (endpoint
 ids are re-randomised constantly, by design).
 
-Stored as JSON at ~/.config/quickshare/known_devices.json.
+Stored as JSON at ~/.config/nearshare/known_devices.json.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import os
 import threading
 from pathlib import Path
 
-log = logging.getLogger("quickshare.names")
+log = logging.getLogger("nearshare.names")
 
 _lock = threading.Lock()
 _cache: dict[str, str] | None = None
@@ -27,7 +27,7 @@ _cache: dict[str, str] | None = None
 def _path() -> Path:
     config = os.environ.get("XDG_CONFIG_HOME",
                             str(Path.home() / ".config"))
-    return Path(config) / "quickshare" / "known_devices.json"
+    return Path(config) / "nearshare" / "known_devices.json"
 
 
 def _load() -> dict[str, str]:
@@ -70,7 +70,7 @@ def remember(ip: str, name: str, manual: bool = False) -> None:
 
     Learned names (manual=False) come from a device introducing itself
     during a transfer. A name the user set by hand always wins — a later
-    transfer must not silently undo `quickshare rename`.
+    transfer must not silently undo `nearshare rename`.
     """
     if not name or name == "Unknown device" or ip.startswith("127."):
         return

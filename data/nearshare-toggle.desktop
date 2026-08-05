@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=QuickShare Toggle Visibility
+Name=NearShare Toggle Visibility
 Comment=Toggle whether this machine is visible to nearby devices
-Exec=quickshare toggle
-Icon=dev.dhivalabs.quickshare
+Exec=nearshare toggle
+Icon=dev.dhivalabs.nearshare
 Terminal=false
 NoDisplay=true
 Categories=Network;FileTransfer;

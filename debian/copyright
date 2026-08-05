@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: QuickShare for Linux
+Upstream-Name: NearShare for Linux
 Upstream-Contact: Dhiva Labs <dhivakar1010@gmail.com>
 
 Files: *
@@ -11,7 +11,7 @@ Copyright: 2020-2023 Google LLC
 License: Apache-2.0
 Comment: Google Nearby Connections / Quick Share wire-format protos, taken
  from Google's Nearby Connections project. The Python bindings generated
- from these at build time (quickshare/proto/*_pb2.py, via
+ from these at build time (nearshare/proto/*_pb2.py, via
  tools/genproto.sh) are not shipped in this source package -- they are
  regenerated against the target's own protobuf runtime -- but as
  machine-generated derivatives of these files they carry the same

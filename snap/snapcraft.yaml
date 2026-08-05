@@ -1,9 +1,9 @@
-name: quickshare
-title: QuickShare
+name: nearshare
+title: NearShare
 version: '1.0.0'
 summary: Share files with nearby Android, Windows, macOS, and Linux devices
 description: |
-  QuickShare speaks Google's Quick Share / Nearby Share wire protocol
+  NearShare speaks Google's Quick Share / Nearby Share wire protocol
   directly, so it interoperates with:
 
     - Android Quick Share
@@ -12,7 +12,7 @@ description: |
     - itself, Linux <-> Linux
 
   No cables, no cloud account, and no companion app on the phone -- just a
-  shared WiFi network (or QuickShare's own experimental Direct-mode
+  shared WiFi network (or NearShare's own experimental Direct-mode
   hotspot) and a 4-digit PIN you confirm on both screens.
 
   Discovery uses mDNS (python-zeroconf, which binds its own multicast
@@ -26,13 +26,13 @@ description: |
   See packaging/SNAP.md in the source tree for the full list of snap
   interfaces this needs and why, including two confinement caveats worth
   knowing before you install: the Nautilus right-click "Send with
-  QuickShare" integration cannot be installed by a strictly-confined
+  NearShare" integration cannot be installed by a strictly-confined
   snap (use the .deb or a from-source install for that), and the
-  `quickshare install`/`uninstall` CLI subcommands mostly no-op here
+  `nearshare install`/`uninstall` CLI subcommands mostly no-op here
   because they target dotfile paths under $HOME (~/.local/bin,
   ~/.local/share/applications, ~/.local/share/nautilus*) that the `home`
   interface deliberately does not grant access to.
-icon: data/icons/dev.dhivalabs.quickshare.svg
+icon: data/icons/dev.dhivalabs.nearshare.svg
 license: MIT
 grade: stable
 confinement: strict
@@ -46,24 +46,24 @@ platforms:
 # Received/sent files and the app's own persistent state should live
 # against the user's REAL home directory, not the per-revision sandbox
 # snapd points $HOME at by default ($SNAP_USER_DATA). Without this,
-# quickshare/core/service.py's default download_dir (Path.home() /
+# nearshare/core/service.py's default download_dir (Path.home() /
 # "Downloads") would quietly write into
-# ~/snap/quickshare/current/Downloads instead of the Downloads folder
+# ~/snap/nearshare/current/Downloads instead of the Downloads folder
 # Nautilus/the user actually sees. XDG_CONFIG_HOME etc. are left alone
 # (snapd points those at the per-revision sandbox already, which is the
-# right place for quickshare/core/names.py's cache file) -- only HOME
+# right place for nearshare/core/names.py's cache file) -- only HOME
 # itself is overridden, and only for the two apps below.
 environment:
   HOME: $SNAP_REAL_HOME
 
 apps:
-  # Named to match the snap itself, so `snap run quickshare <args>` and
-  # (once the snap is installed) the bare `quickshare <args>` alias both
-  # dispatch straight to quickshare.cli's argparse subcommands (on/off/
+  # Named to match the snap itself, so `snap run nearshare <args>` and
+  # (once the snap is installed) the bare `nearshare <args>` alias both
+  # dispatch straight to nearshare.cli's argparse subcommands (on/off/
   # toggle/status/peers/send/rename/forget/gui/...), exactly like the
-  # non-snap `bin/quickshare` wrapper does.
-  quickshare:
-    command: bin/quickshare-cli
+  # non-snap `bin/nearshare` wrapper does.
+  nearshare:
+    command: bin/nearshare-cli
     extensions: [gnome]
     plugs:
       - network
@@ -75,14 +75,14 @@ apps:
     environment:
       HOME: $SNAP_REAL_HOME
 
-  # `quickshare.gui` -- the desktop launcher target. Runs `python -m
-  # quickshare` (the GTK app) directly rather than going through
-  # quickshare.cli's own "gui" subcommand, so there's one less exec hop
+  # `nearshare.gui` -- the desktop launcher target. Runs `python -m
+  # nearshare` (the GTK app) directly rather than going through
+  # nearshare.cli's own "gui" subcommand, so there's one less exec hop
   # and no dependency on argv handling in two different places.
   gui:
-    command: bin/quickshare-gui
+    command: bin/nearshare-gui
     extensions: [gnome]
-    desktop: usr/share/applications/dev.dhivalabs.quickshare.desktop
+    desktop: usr/share/applications/dev.dhivalabs.nearshare.desktop
     plugs:
       - network
       - network-bind
@@ -94,7 +94,7 @@ apps:
       HOME: $SNAP_REAL_HOME
 
 parts:
-  quickshare:
+  nearshare:
     plugin: python
     source: .
     # python3-venv/python3-dev/libffi/libssl: build-time headers in case
@@ -112,7 +112,7 @@ parts:
     # protobuf cryptography`. GTK4/libadwaita/PyGObject are NOT pip
     # packages here (there's no PyPI wheel that reliably matches a given
     # system's GObject-Introspection typelibs -- see
-    # quickshare/__main__.py's own comment on this) -- the gnome
+    # nearshare/__main__.py's own comment on this) -- the gnome
     # extension below provides that runtime instead, the same way
     # README.md's non-snap install uses `apt install python3-gi
     # gir1.2-gtk-4.0 gir1.2-adw-1` alongside (not inside) the venv.
@@ -120,7 +120,7 @@ parts:
       - zeroconf
       - protobuf
       - cryptography
-    # nmcli (Direct-mode hotspot, quickshare/core/hotspot.py) is invoked
+    # nmcli (Direct-mode hotspot, nearshare/core/hotspot.py) is invoked
     # as a subprocess by binary name -- strict confinement doesn't let a
     # snap exec arbitrary host binaries, so the nmcli executable itself
     # has to ship inside the snap. The `network-manager` interface
@@ -135,7 +135,7 @@ parts:
       craftctl default
 
       # ---- protobuf codegen (tools/genproto.sh) --------------------
-      # protos/*.proto -> quickshare/proto/*_pb2.py. Not committed
+      # protos/*.proto -> nearshare/proto/*_pb2.py. Not committed
       # upstream (gitignored -- tied to the protobuf runtime version),
       # regenerated here against this build's own protobuf/grpcio-tools.
       # grpcio-tools is BUILD-time only. It is installed into a THROWAWAY
@@ -149,7 +149,7 @@ parts:
       # NB: /usr/bin/python3 explicitly. The python plugin puts the app
       # venv's bin first on PATH, and that interpreter cannot create a
       # new venv here (Permission denied on its own bin/python3).
-      protogen=/tmp/quickshare-protogen
+      protogen=/tmp/nearshare-protogen
       rm -rf "$protogen"
       /usr/bin/python3 -m venv "$protogen"
       "$protogen"/bin/pip install --no-cache-dir --upgrade pip
@@ -157,59 +157,59 @@ parts:
       bash "$CRAFT_PART_SRC"/tools/genproto.sh "$protogen"/bin/python3
       rm -rf "$protogen"
 
-      # ---- stage the quickshare package itself ---------------------
+      # ---- stage the nearshare package itself ---------------------
       # This project has no pyproject.toml/setup.py: the non-snap
-      # `bin/quickshare` launcher works by cd-ing to the project root
-      # and running `python -m quickshare.cli`, relying on the CWD for
-      # the package to be importable (see bin/quickshare). The python
+      # `bin/nearshare` launcher works by cd-ing to the project root
+      # and running `python -m nearshare.cli`, relying on the CWD for
+      # the package to be importable (see bin/nearshare). The python
       # plugin above only pip-installed the three runtime dependencies
       # into the venv for that same reason -- there is no packaging
       # metadata for it to additionally `pip install` the source itself.
       # Reproduce the CWD trick instead of inventing packaging metadata
       # this task isn't allowed to add outside snap/: stage the package
       # tree under $SNAP/app and have both wrapper scripts below cd
-      # there before invoking python3 -m quickshare(.cli).
+      # there before invoking python3 -m nearshare(.cli).
       mkdir -p "$CRAFT_PART_INSTALL"/app
-      cp -r "$CRAFT_PART_SRC"/quickshare "$CRAFT_PART_INSTALL"/app/quickshare
-      find "$CRAFT_PART_INSTALL"/app/quickshare -name '__pycache__' -exec rm -rf {} +
-      find "$CRAFT_PART_INSTALL"/app/quickshare -name '*.pyc' -delete
+      cp -r "$CRAFT_PART_SRC"/nearshare "$CRAFT_PART_INSTALL"/app/nearshare
+      find "$CRAFT_PART_INSTALL"/app/nearshare -name '__pycache__' -exec rm -rf {} +
+      find "$CRAFT_PART_INSTALL"/app/nearshare -name '*.pyc' -delete
 
       # ---- launcher wrappers -----------------------------------------
       # `command:` can't itself `cd` first, so each app gets a tiny
-      # wrapper (mirrors what bin/quickshare does for the non-snap
+      # wrapper (mirrors what bin/nearshare does for the non-snap
       # install).
       mkdir -p "$CRAFT_PART_INSTALL"/bin
-      cat > "$CRAFT_PART_INSTALL"/bin/quickshare-cli <<'WRAP'
+      cat > "$CRAFT_PART_INSTALL"/bin/nearshare-cli <<'WRAP'
       #!/bin/sh
       set -e
       cd "$SNAP/app"
-      exec "$SNAP/bin/python3" -m quickshare.cli "$@"
+      exec "$SNAP/bin/python3" -m nearshare.cli "$@"
       WRAP
-      cat > "$CRAFT_PART_INSTALL"/bin/quickshare-gui <<'WRAP'
+      cat > "$CRAFT_PART_INSTALL"/bin/nearshare-gui <<'WRAP'
       #!/bin/sh
       set -e
       cd "$SNAP/app"
-      exec "$SNAP/bin/python3" -m quickshare "$@"
+      exec "$SNAP/bin/python3" -m nearshare "$@"
       WRAP
-      chmod 755 "$CRAFT_PART_INSTALL"/bin/quickshare-cli \
-                "$CRAFT_PART_INSTALL"/bin/quickshare-gui
+      chmod 755 "$CRAFT_PART_INSTALL"/bin/nearshare-cli \
+                "$CRAFT_PART_INSTALL"/bin/nearshare-gui
 
   desktop-files:
     plugin: dump
     source: data
     organize:
-      icons/dev.dhivalabs.quickshare.svg: usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.quickshare.svg
-      dev.dhivalabs.quickshare.desktop: usr/share/applications/dev.dhivalabs.quickshare.desktop
-    # Only the main app launcher ships: quickshare-send.desktop (Nautilus
-    # %F argument passing) and quickshare-toggle.desktop (meant to be
+      icons/dev.dhivalabs.nearshare.svg: usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.nearshare.svg
+      dev.dhivalabs.nearshare.desktop: usr/share/applications/dev.dhivalabs.nearshare.desktop
+    # Only the main app launcher ships: nearshare-send.desktop (Nautilus
+    # %F argument passing) and nearshare-toggle.desktop (meant to be
     # targeted by an absolute-path gsettings custom keybinding, per
-    # quickshare/cli.py's _print_shortcut_commands) don't map onto a
+    # nearshare/cli.py's _print_shortcut_commands) don't map onto a
     # strictly-confined snap's desktop-file export, which only wires up
     # the ONE file referenced by an app's `desktop:` key above -- see
     # packaging/SNAP.md.
     stage:
-      - usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.quickshare.svg
-      - usr/share/applications/dev.dhivalabs.quickshare.desktop
+      - usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.nearshare.svg
+      - usr/share/applications/dev.dhivalabs.nearshare.desktop
     override-build: |
       # The dump plugin populates the install dir with hard links, which
       # fails outright if an earlier interrupted build left files there.
@@ -217,13 +217,13 @@ parts:
       rm -rf "${CRAFT_PART_INSTALL:?}"/*
       craftctl default
       # snapd's desktop-file export rewrites only the Exec= line's
-      # first (command) token to the real /snap/bin/quickshare.gui
+      # first (command) token to the real /snap/bin/nearshare.gui
       # path, and keeps everything after the first space as literal
-      # arguments. Upstream's `Exec=quickshare gui` is correct for the
-      # non-snap install (bin/quickshare dispatches its own "gui"
+      # arguments. Upstream's `Exec=nearshare gui` is correct for the
+      # non-snap install (bin/nearshare dispatches its own "gui"
       # subcommand), but unchanged here it would become
-      # "/snap/bin/quickshare.gui gui" -- a stray "gui" argv reaching
-      # apps.gui's wrapper, which already execs `python -m quickshare`
+      # "/snap/bin/nearshare.gui gui" -- a stray "gui" argv reaching
+      # apps.gui's wrapper, which already execs `python -m nearshare`
       # directly and doesn't expect one. Strip it so the rewrite lands
       # on a bare invocation.
       #
@@ -234,5 +234,5 @@ parts:
       # usr/share/applications/. Patch it there; organize (a distinct,
       # later lifecycle step) then moves the already-patched file into
       # place before staging.
-      sed -i 's/^Exec=quickshare gui$/Exec=quickshare/' \
-        "$CRAFT_PART_INSTALL"/dev.dhivalabs.quickshare.desktop
+      sed -i 's/^Exec=nearshare gui$/Exec=nearshare/' \
+        "$CRAFT_PART_INSTALL"/dev.dhivalabs.nearshare.desktop

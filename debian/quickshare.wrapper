@@ -1,15 +1,15 @@
 #!/bin/sh
-# QuickShare launcher installed by the Debian package.
+# NearShare launcher installed by the Debian package.
 #
-# Unlike bin/quickshare in the upstream source tree (which execs the
+# Unlike bin/nearshare in the upstream source tree (which execs the
 # project's dev .venv), the packaged app has no venv: it runs against the
-# system python3 with the app tree installed under /usr/share/quickshare.
-# Prepending that to PYTHONPATH makes `import quickshare` resolve to
-# /usr/share/quickshare/quickshare -- and because it's an exported
+# system python3 with the app tree installed under /usr/share/nearshare.
+# Prepending that to PYTHONPATH makes `import nearshare` resolve to
+# /usr/share/nearshare/nearshare -- and because it's an exported
 # environment variable, every subprocess.Popen/os.execv call the app makes
-# to relaunch itself (`quickshare gui`, `on`/`toggle` auto-starting the
-# app, the Nautilus script/extension calling back into `quickshare
-# send-picker`) inherits it too, so `python3 -m quickshare` keeps
+# to relaunch itself (`nearshare gui`, `on`/`toggle` auto-starting the
+# app, the Nautilus script/extension calling back into `nearshare
+# send-picker`) inherits it too, so `python3 -m nearshare` keeps
 # resolving no matter how deep the call chain goes.
-export PYTHONPATH="/usr/share/quickshare${PYTHONPATH:+:$PYTHONPATH}"
-exec /usr/bin/python3 -m quickshare.cli "$@"
+export PYTHONPATH="/usr/share/nearshare${PYTHONPATH:+:$PYTHONPATH}"
+exec /usr/bin/python3 -m nearshare.cli "$@"

@@ -1,6 +1,6 @@
 """Bridges GTK's GLib main loop and the core service's asyncio world.
 
-QuickShareService (and everything under quickshare.core) is asyncio-
+NearShareService (and everything under nearshare.core) is asyncio-
 native: the TCP receive server, mDNS advertiser/browser, and control
 socket all run as coroutines on an event loop. GTK4/libadwaita instead
 run their own loop (GLib's main context) on the thread that calls
@@ -42,7 +42,7 @@ from typing import Any, Callable, Coroutine, TypeVar
 
 from gi.repository import GLib
 
-log = logging.getLogger("quickshare.ui.glue")
+log = logging.getLogger("nearshare.ui.glue")
 
 T = TypeVar("T")
 
@@ -53,7 +53,7 @@ class AsyncioThread:
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name="quickshare-asyncio")
+            target=self._run, daemon=True, name="nearshare-asyncio")
         self._started = threading.Event()
 
     def start(self) -> None:

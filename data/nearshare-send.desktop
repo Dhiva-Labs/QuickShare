@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NearShare (send to phone)
+Comment=Send the selected files to a nearby device with NearShare
+Exec=nearshare send-picker %F
+Icon=dev.dhivalabs.nearshare
+Terminal=false
+Categories=Utility;FileTransfer;
+NoDisplay=false

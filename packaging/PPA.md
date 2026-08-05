@@ -1,9 +1,9 @@
-# Publishing `quickshare` to a Launchpad PPA
+# Publishing `nearshare` to a Launchpad PPA
 
 This assumes the same house PPA other Dhiva Labs Linux packages use,
 `ppa:dhiva-labs/apps` (see BranchPilot's `packaging/PPA.md`) — **confirm this
-is where QuickShare should actually land** before the first upload; nothing
-below is QuickShare-specific to that PPA name.
+is where NearShare should actually land** before the first upload; nothing
+below is NearShare-specific to that PPA name.
 
 ## Version convention
 
@@ -33,7 +33,7 @@ dch --newversion 1.0.0~noble1 --distribution noble \
 
 ## Why this package is straightforward for the PPA (unlike a Flutter build)
 
-`quickshare` has no vendored SDK problem: Launchpad's build farm has no
+`nearshare` has no vendored SDK problem: Launchpad's build farm has no
 outbound network, and this package's only build step
 (`debian/rules override_dh_auto_build`) needs `python3-grpc-tools` to
 regenerate the protobuf bindings — declared as a `Build-Depends`, so
@@ -65,7 +65,7 @@ dpkg-buildpackage -S -us -uc
 
 Confirms `debian/source/options`' tar-ignore rules are still doing their
 job (no `.git/`, `.venv/`, `__pycache__/`, or stale `_pb2.py` in the
-tarball — check with `tar tJf ../quickshare_<version>.tar.xz | grep -E
+tarball — check with `tar tJf ../nearshare_<version>.tar.xz | grep -E
 '\.venv|__pycache__|_pb2\.py|^\S*\.git'`, which should print nothing) and
 that `debian/rules` regenerates the protobuf bindings cleanly.
 
@@ -86,7 +86,7 @@ match `debian/changelog`'s Maintainer address, `dhivakar1010@gmail.com`.)
 
 ```bash
 debuild -S -sa -k<KEYID>
-dput dhiva-apps ../quickshare_1.0.0~noble1_source.changes
+dput dhiva-apps ../nearshare_1.0.0~noble1_source.changes
 ```
 
 (`dhiva-apps` here is whatever `dput` host alias/section this house's
@@ -98,15 +98,15 @@ than reconfiguring dput.)
 Both report success and upload nothing:
 
 **1. `dput` skips a version it already sent.** After a successful transfer
-it writes `quickshare_<version>_source.<host>.upload` next to the package;
+it writes `nearshare_<version>_source.<host>.upload` next to the package;
 a second `dput` of the *same version* is then a silent no-op — this bit a
 prior Dhiva Labs upload (see BranchPilot's `packaging/PPA.md`). If Launchpad
 rejected an upload (wrong/unregistered key, bad signature) and you re-sign,
 force the re-upload rather than bumping the version needlessly:
 
 ```bash
-rm -f ../quickshare_*_source.dhiva-apps.upload
-dput -f dhiva-apps ../quickshare_1.0.0~noble1_source.changes
+rm -f ../nearshare_*_source.dhiva-apps.upload
+dput -f dhiva-apps ../nearshare_1.0.0~noble1_source.changes
 ```
 
 **2. Launchpad discards uploads signed by an unregistered key.** `dput`
@@ -116,7 +116,7 @@ transfer, not that Launchpad accepted it.
 ### Confirm it actually landed
 
 ```bash
-curl -s "https://api.launchpad.net/1.0/~dhiva-labs/+archive/ubuntu/apps?ws.op=getPublishedSources&source_name=quickshare" \
+curl -s "https://api.launchpad.net/1.0/~dhiva-labs/+archive/ubuntu/apps?ws.op=getPublishedSources&source_name=nearshare" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["total_size"], "published")'
 ```
 

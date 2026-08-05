@@ -31,7 +31,7 @@ from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZerocon
 
 from .connection import build_endpoint_info, parse_endpoint_info
 
-log = logging.getLogger("quickshare.mdns")
+log = logging.getLogger("nearshare.mdns")
 
 SERVICE_TYPE = "_FC9F5ED42C8A._tcp.local."
 PCP_P2P_CLUSTER = 0x23
@@ -82,7 +82,7 @@ class Advertiser:
             f"{instance}.{SERVICE_TYPE}",
             port=self.port,
             properties=txt,
-            server=f"{socket.gethostname()}-quickshare.local.",
+            server=f"{socket.gethostname()}-nearshare.local.",
             addresses=_local_addresses(),
         )
         self._aiozc = AsyncZeroconf(ip_version=IPVersion.V4Only)

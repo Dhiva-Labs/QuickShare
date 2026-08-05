@@ -1,8 +1,8 @@
-"""Tests for quickshare.cli against a live, in-process QuickShareService.
+"""Tests for nearshare.cli against a live, in-process NearShareService.
 
 Monkeypatches XDG_RUNTIME_DIR to an isolated temp directory so the
 control socket doesn't collide with a real running app, starts a
-QuickShareService, then calls the cli command functions directly
+NearShareService, then calls the cli command functions directly
 (building argparse.Namespace objects by hand rather than shelling out)
 and asserts on their return codes and printed output.
 
@@ -20,9 +20,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from quickshare import cli
-from quickshare.core.connection import Events
-from quickshare.core.service import QuickShareService, control_socket_path
+from nearshare import cli
+from nearshare.core.connection import Events
+from nearshare.core.service import NearShareService, control_socket_path
 
 
 def _ns(**kwargs) -> argparse.Namespace:
@@ -50,9 +50,9 @@ async def main() -> int:
     runtime_dir = tmp / "run"
     runtime_dir.mkdir()
     os.environ["XDG_RUNTIME_DIR"] = str(runtime_dir)
-    assert control_socket_path() == runtime_dir / "quickshare.sock"
+    assert control_socket_path() == runtime_dir / "nearshare.sock"
 
-    service = QuickShareService(device_name="cli-test-device",
+    service = NearShareService(device_name="cli-test-device",
                                 download_dir=tmp / "downloads",
                                 events=Events())
     await service.start(visible=False)
@@ -84,7 +84,7 @@ async def main() -> int:
         # --- status: visible now ----------------------------------------
         with _captured() as (out, err):
             await _run(cli.cmd_status, _ns())
-        assert "QuickShare is visible" in out.getvalue()
+        assert "NearShare is visible" in out.getvalue()
         print("status (visible): OK")
 
         # --- off ----------------------------------------------------
@@ -151,7 +151,7 @@ async def main() -> int:
     print("peers (not running): OK")
 
     # on/toggle fall back to launching the GUI instead of failing. We
-    # can't actually exercise `python -m quickshare` (no __main__ yet,
+    # can't actually exercise `python -m nearshare` (no __main__ yet,
     # owned by another agent), so just check the fallback is taken
     # (exit 0, message printed) rather than a hard failure, and that it
     # tried to launch something rather than silently no-op'ing.
@@ -171,7 +171,7 @@ async def main() -> int:
             rc = cli.cmd_on(_ns())
         assert rc == 0, err.getvalue()
         assert "starting it now" in out.getvalue()
-        assert launched and launched[0][1:] == ["-m", "quickshare"]
+        assert launched and launched[0][1:] == ["-m", "nearshare"]
         print("on (not running, launches GUI): OK")
 
         launched.clear()
@@ -207,7 +207,7 @@ async def main() -> int:
 # ------------------------------------------------------- install/uninstall
 
 def test_install_uninstall() -> None:
-    """`quickshare install`/`uninstall` against a fake $HOME, so the real
+    """`nearshare install`/`uninstall` against a fake $HOME, so the real
     developer machine's ~/.local/{bin,share} is never touched. HOME and
     XDG_DATA_HOME are monkeypatched just for this block and restored
     afterwards (unlike XDG_RUNTIME_DIR above, HOME affects Path.home()
@@ -222,10 +222,10 @@ def test_install_uninstall() -> None:
     os.environ["XDG_DATA_HOME"] = str(fake_home / ".local" / "share")
 
     try:
-        bin_target = fake_home / ".local" / "bin" / "quickshare"
+        bin_target = fake_home / ".local" / "bin" / "nearshare"
         apps_dir = fake_home / ".local" / "share" / "applications"
         nautilus_script = (fake_home / ".local" / "share" / "nautilus" /
-                           "scripts" / "Send with QuickShare")
+                           "scripts" / "Send with NearShare")
 
         # --- install ---------------------------------------------------
         with _captured() as (out, err):

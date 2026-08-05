@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=QuickShare
+Name=NearShare
 GenericName=Nearby file sharing
 Comment=Share files with nearby Android, Windows, and Mac devices
-Exec=quickshare gui
-Icon=dev.dhivalabs.quickshare
-StartupWMClass=dev.dhivalabs.quickshare
+Exec=nearshare gui
+Icon=dev.dhivalabs.nearshare
+StartupWMClass=dev.dhivalabs.nearshare
 Terminal=false
 Categories=Network;FileTransfer;GTK;
 StartupNotify=true
-Keywords=nearby;share;quickshare;airdrop;
+Keywords=nearby;share;nearshare;airdrop;

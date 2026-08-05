@@ -1,4 +1,4 @@
-# Packaging QuickShare as a snap
+# Packaging NearShare as a snap
 
 This covers the strictly-confined snap defined in `snap/snapcraft.yaml`
 (base `core24`, using the `gnome` extension for GTK4/libadwaita/PyGObject).
@@ -27,14 +27,14 @@ minutes: it fetches `network-manager` and its dependencies as a
 stage-package, plus the build-only `grpcio-tools` needed to run
 `tools/genproto.sh`.
 
-Output: `quickshare_1.0.0_amd64.snap` (and `_arm64.snap` if you build for
+Output: `nearshare_1.0.0_amd64.snap` (and `_arm64.snap` if you build for
 that platform too -- see the `platforms:` key in `snap/snapcraft.yaml`;
 only `amd64` was actually built and tested for this round).
 
 ## Local install
 
 ```bash
-sudo snap install --dangerous ./quickshare_1.0.0_amd64.snap
+sudo snap install --dangerous ./nearshare_1.0.0_amd64.snap
 ```
 
 `--dangerous` is required for a locally-built, unsigned snap. Then wire up
@@ -42,12 +42,12 @@ the manual-connect interfaces (see below) -- none of these are needed just
 to launch the app, only for the features they gate:
 
 ```bash
-sudo snap connect quickshare:network-manager
-sudo snap connect quickshare:bluez
-sudo snap connect quickshare:removable-media
-sudo snap connect quickshare.gui:network-manager
-sudo snap connect quickshare.gui:bluez
-sudo snap connect quickshare.gui:removable-media
+sudo snap connect nearshare:network-manager
+sudo snap connect nearshare:bluez
+sudo snap connect nearshare:removable-media
+sudo snap connect nearshare.gui:network-manager
+sudo snap connect nearshare.gui:bluez
+sudo snap connect nearshare.gui:removable-media
 ```
 
 (Both apps declare the same plugs; connect both, or just the one you
@@ -57,8 +57,8 @@ mode / BLE features are independent.)
 Then:
 
 ```bash
-quickshare status          # CLI, via the `quickshare` alias
-quickshare.gui              # GUI
+nearshare status          # CLI, via the `nearshare` alias
+nearshare.gui              # GUI
 ```
 
 ## Interfaces
@@ -88,7 +88,7 @@ requiring an explicit `snap connect` (see [Local install](#local-install)).
 
 ### Does self-IP detection work under confinement?
 
-`quickshare/core/mdns.py`'s `_local_ipv4s()` (used to filter this
+`nearshare/core/mdns.py`'s `_local_ipv4s()` (used to filter this
 machine's own advertisement out of the peer list) tries `ip -j -4 addr`
 first and falls back to a UDP-connect trick (`connect()` a UDP socket to
 `8.8.8.8:80`, no packet actually sent, then read back the picked source
@@ -137,17 +137,17 @@ exchange.
 ### HOME redirection (why `environment: HOME: $SNAP_REAL_HOME` is set)
 
 By default snapd points a confined app's `$HOME` at
-`~/snap/quickshare/<revision>` (`$SNAP_USER_DATA`), not the user's actual
-home directory. `quickshare/core/service.py`'s default `download_dir` is
+`~/snap/nearshare/<revision>` (`$SNAP_USER_DATA`), not the user's actual
+home directory. `nearshare/core/service.py`'s default `download_dir` is
 literally `Path.home() / "Downloads"`, which reads `$HOME` -- left alone,
-received files would land in `~/snap/quickshare/current/Downloads`
+received files would land in `~/snap/nearshare/current/Downloads`
 instead of the `~/Downloads` that Nautilus and every other app shows,
 which would defeat the point of a file-sharing app. `snap/snapcraft.yaml`
 overrides `HOME` to `$SNAP_REAL_HOME` for both apps to fix this.
 
 This is deliberately *not* a blanket fix-everything change: `$XDG_CONFIG_HOME`
 etc. are left at whatever snapd already points them to (the per-revision
-sandbox), which is correct for `quickshare/core/names.py`'s device-name
+sandbox), which is correct for `nearshare/core/names.py`'s device-name
 cache -- that's app-private state, not something the user needs to find
 in Nautilus. GTK/GLib/dconf paths are unaffected by this too, since they
 go through their own dedicated interfaces (`gsettings`, `desktop-legacy`,
@@ -155,9 +155,9 @@ etc., supplied by the `gnome` extension) which are written against the
 *real* home directory's AppArmor path glob regardless of the app's own
 `$HOME` env var.
 
-### `quickshare install`/`uninstall` mostly don't work from the snap
+### `nearshare install`/`uninstall` mostly don't work from the snap
 
-`bin/quickshare install` (and the `cli.py install`/`uninstall`
+`bin/nearshare install` (and the `cli.py install`/`uninstall`
 subcommands it's a thin wrapper for) write to `~/.local/bin`,
 `~/.local/share/applications`, `~/.local/share/nautilus/scripts`, and
 `~/.local/share/nautilus-python/extensions`. All four are under the
@@ -168,7 +168,7 @@ only grants access to non-hidden paths. This holds regardless of the
 what the `home` interface's fixed, real-home-directory AppArmor rule
 permits).
 
-Net effect: running `quickshare install`/`uninstall` from the snap will
+Net effect: running `nearshare install`/`uninstall` from the snap will
 fail (or silently no-op) on most of its steps. This isn't a snap
 packaging bug to fix -- it's inherent to what `home` grants under strict
 confinement. If you want the PATH symlink, desktop launchers, or Nautilus
@@ -177,7 +177,7 @@ integration, use the `.deb` or a from-source install instead (see
 
 ## Known limitations of the snap specifically
 
-- **No Nautilus right-click integration.** `bin/quickshare install`'s
+- **No Nautilus right-click integration.** `bin/nearshare install`'s
   Nautilus script and the top-level context-menu extension both need to
   write into `~/.local/share/nautilus*`, which a strictly-confined snap
   can't do (see above) -- and even if it could, Nautilus (unless it's
@@ -185,13 +185,13 @@ integration, use the `.deb` or a from-source install instead (see
   confined snap's binary for a script it's running. This is a hard
   limitation of strict confinement, not a bug: **the `.deb`/source
   install covers Nautilus integration; the snap does not, and can't.**
-- **`quickshare install`/`uninstall` mostly no-op**, per the dedicated
+- **`nearshare install`/`uninstall` mostly no-op**, per the dedicated
   section above.
 - **The GNOME custom-keybinding step is unaffected** -- `cli.py`'s
   `_print_shortcut_commands` only *prints* a `gsettings` one-liner, it
   never writes anything itself. If you bind the shortcut yourself, point
-  it at `quickshare.toggle`'s real path, e.g.
-  `/snap/bin/quickshare toggle` (not `/snap/bin/quickshare.gui`).
+  it at `nearshare.toggle`'s real path, e.g.
+  `/snap/bin/nearshare toggle` (not `/snap/bin/nearshare.gui`).
 - **Direct-mode hotspot (`nmcli`) and BLE need a manual `snap connect`**
   the first time -- see [Local install](#local-install). Without them,
   `hotspot.py`/`ble.py`'s own error handling degrades gracefully (BLE
@@ -203,12 +203,12 @@ integration, use the `.deb` or a from-source install instead (see
 
 ```bash
 snapcraft login
-snapcraft register quickshare
-snapcraft upload --release=stable ./quickshare_1.0.0_amd64.snap
+snapcraft register nearshare
+snapcraft upload --release=stable ./nearshare_1.0.0_amd64.snap
 ```
 
 (`upload` used to be `push`; if your snapcraft is old enough to only know
-`push`, use `snapcraft push --release=stable ./quickshare_1.0.0_amd64.snap`
+`push`, use `snapcraft push --release=stable ./nearshare_1.0.0_amd64.snap`
 instead. This project builds with snapcraft 9.0.1, which uses `upload`.)
 
 **Strict confinement, as configured here, passes automated review and can
@@ -230,18 +230,18 @@ If `snapcraft upload` reports the automated review rejected the snap
 interface/metadata problem (e.g. a plug snapd doesn't recognize, or a
 `command:` pointing at a file that isn't actually there) -- rerun
 `snapcraft try` or inspect the built snap's contents (`unsquashfs -l
-quickshare_1.0.0_amd64.snap`) before assuming it's a review-policy issue.
+nearshare_1.0.0_amd64.snap`) before assuming it's a review-policy issue.
 
 ### Icon note
 
 `snap/snapcraft.yaml`'s top-level `icon:` points at
-`data/icons/dev.dhivalabs.quickshare.svg` directly. If the Snap Store's
+`data/icons/dev.dhivalabs.nearshare.svg` directly. If the Snap Store's
 listing validation rejects SVG (some older tooling wants PNG), regenerate
 it as a PNG and put it under `snap/gui/icon.png` instead (that path is
 snapcraft-recognized and doesn't require touching `data/`):
 
 ```bash
-rsvg-convert -w 256 -h 256 data/icons/dev.dhivalabs.quickshare.svg -o snap/gui/icon.png
+rsvg-convert -w 256 -h 256 data/icons/dev.dhivalabs.nearshare.svg -o snap/gui/icon.png
 ```
 
 This wasn't done proactively since the current `icon:` value builds fine

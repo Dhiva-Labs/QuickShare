@@ -9,7 +9,7 @@ control frame and must never reach on_text.
 
 These tests drive InboundConnection over a real localhost TCP connection.
 The "sender" side is hand-rolled directly on top of Ukey2Client + D2DCipher
-(borrowing the exact frame-building code from quickshare.core.connection) so
+(borrowing the exact frame-building code from nearshare.core.connection) so
 we can inject arbitrary/malformed/duplicate/interleaved payloads that the
 real OutboundConnection would never produce.
 
@@ -26,12 +26,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-from quickshare.core.connection import (CHUNK_SIZE, Events, InboundConnection,
+from nearshare.core.connection import (CHUNK_SIZE, Events, InboundConnection,
                                         build_endpoint_info, read_frame,
                                         write_frame)
-from quickshare.core.crypto import D2DCipher, Ukey2Client
-from quickshare.proto import offline_wire_formats_pb2 as ow
-from quickshare.proto import wire_format_pb2 as wf
+from nearshare.core.crypto import D2DCipher, Ukey2Client
+from nearshare.proto import offline_wire_formats_pb2 as ow
+from nearshare.proto import wire_format_pb2 as wf
 
 
 def sha256(data: bytes) -> str:

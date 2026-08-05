@@ -1,4 +1,4 @@
-"""Entry point for `python -m quickshare` (the GTK app), run from the
+"""Entry point for `python -m nearshare` (the GTK app), run from the
 project's .venv.
 
 Why this file has to fiddle with sys.path: PyGObject (`gi`) and its
@@ -46,7 +46,7 @@ def _ensure_gi_importable() -> None:
         import gi  # noqa: F401
     except ImportError as exc:
         sys.exit(
-            "quickshare: could not import PyGObject ('gi') even after "
+            "nearshare: could not import PyGObject ('gi') even after "
             "adding the system dist-packages directories to sys.path. "
             "Install python3-gi, gir1.2-gtk-4.0, and gir1.2-adw-1 (e.g. "
             "`sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`) "
@@ -55,7 +55,7 @@ def _ensure_gi_importable() -> None:
 
 _ensure_gi_importable()
 
-from quickshare.ui.app import main  # noqa: E402  (must follow the sys.path fix)
+from nearshare.ui.app import main  # noqa: E402  (must follow the sys.path fix)
 
 if __name__ == "__main__":
     sys.exit(main())

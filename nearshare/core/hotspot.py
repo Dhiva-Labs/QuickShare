@@ -23,9 +23,9 @@ import logging
 import random
 import string
 
-log = logging.getLogger("quickshare.hotspot")
+log = logging.getLogger("nearshare.hotspot")
 
-CONNECTION_NAME = "quickshare-direct"
+CONNECTION_NAME = "nearshare-direct"
 
 
 class HotspotError(Exception):
@@ -85,7 +85,7 @@ async def find_wifi_interface() -> str | None:
 
 
 class Hotspot:
-    """Owns the lifecycle of one `quickshare-direct` AP connection profile.
+    """Owns the lifecycle of one `nearshare-direct` AP connection profile.
 
     Only one instance should be "up" at a time (enforced by the UI, which
     only shows one Direct-mode switch); this class does not itself guard
@@ -111,7 +111,7 @@ class Hotspot:
                 "no WiFi adapter found; Direct mode needs a WiFi interface "
                 "capable of access-point mode")
 
-        ssid = f"QuickShare-{_random_suffix(4)}"
+        ssid = f"NearShare-{_random_suffix(4)}"
         password = _random_password()
 
         try:

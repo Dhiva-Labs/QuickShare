@@ -1,6 +1,6 @@
-# QuickShare for Linux
+# NearShare for Linux
 
-Quick Share (formerly Nearby Share) for the Ubuntu/GNOME desktop. QuickShare
+Quick Share (formerly Nearby Share) for the Ubuntu/GNOME desktop. NearShare
 speaks Google's wire protocol directly, so it interoperates with:
 
 - **Android** Quick Share
@@ -9,7 +9,7 @@ speaks Google's wire protocol directly, so it interoperates with:
 - **itself**, Linux ↔ Linux
 
 No cables, no cloud account, no companion app on the phone — just a shared
-WiFi network (or QuickShare's own experimental hotspot, see [Direct
+WiFi network (or NearShare's own experimental hotspot, see [Direct
 mode](#direct-mode-experimental)) and a 4-digit PIN you confirm on both
 screens.
 
@@ -24,13 +24,13 @@ screens.
 
 ## Working principle
 
-Everything below lives in `quickshare/core/` — a UI-free library with no
+Everything below lives in `nearshare/core/` — a UI-free library with no
 GTK or CLI imports, so the same protocol implementation backs the GUI,
 the CLI, and the loopback test (`tests/test_loopback.py`).
 
-### 1. Discovery — mDNS (`quickshare/core/mdns.py`)
+### 1. Discovery — mDNS (`nearshare/core/mdns.py`)
 
-QuickShare advertises (and browses for) the DNS-SD service type
+NearShare advertises (and browses for) the DNS-SD service type
 `_FC9F5ED42C8A._tcp.local.` — that hex string is Google's Nearby
 Connections service ID. Two pieces of the advertisement matter:
 
@@ -47,15 +47,15 @@ service type once it's open on screen. `mdns.Advertiser` and
 `mdns.Browser` wrap `zeroconf`'s async API for the advertise and browse
 sides respectively.
 
-### 1a. BLE trigger advertising (`quickshare/core/ble.py`)
+### 1a. BLE trigger advertising (`nearshare/core/ble.py`)
 
 **Both directions are covered.** Alongside the advertiser, `BleScanner`
 passively listens (BlueZ `StartDiscovery`, LE transport, filtered to
 UUID `0xFE2C`) for the same beacon coming *from* other devices. When a
-nearby phone opens its share sheet or receive screen, QuickShare knows
+nearby phone opens its share sheet or receive screen, NearShare knows
 Quick Share activity is happening around it: the app's device list gets
 a live "activity nearby" signal (`ble_activity_nearby` in
-`quickshare status --json`), and if you're currently hidden you get a
+`nearshare status --json`), and if you're currently hidden you get a
 desktop notification offering to turn visibility on. The beacon itself
 carries no address, so the actual device still appears via mDNS —
 BLE answers *"is someone around?"*, mDNS answers *"who and where"*.
@@ -64,9 +64,9 @@ BLE answers *"is someone around?"*, mDNS answers *"who and where"*.
 Real Quick Share doesn't wait for the share sheet to be open on the
 *other* device — it wakes it up first with a low-power Bluetooth LE
 advertisement, then does the actual discovery/transfer over mDNS+TCP as
-above. QuickShare now does the same: while visible, `BleAdvertiser`
+above. NearShare now does the same: while visible, `BleAdvertiser`
 broadcasts a static BLE service-data payload on UUID `0xFE2C` (the same
-trigger `rquickshare` uses) via BlueZ's `LEAdvertisingManager1` D-Bus
+trigger `rnearshare` uses) via BlueZ's `LEAdvertisingManager1` D-Bus
 API. The payload carries no identity of its own — it's purely a nudge
 that tells a nearby Android phone "something here speaks Quick Share,
 go look at mDNS", which is what makes this machine show up in the
@@ -76,11 +76,11 @@ happens to be actively browsing.
 This requires BlueZ and a Bluetooth adapter with LE advertising
 support. When either is missing (no adapter, BlueZ not running, no
 permission to the system bus), `BleAdvertiser.start()` raises
-`BleUnavailable`, `QuickShareService.ble_status` becomes
-`"unavailable: <reason>"`, and QuickShare **falls back to mDNS-only**
+`BleUnavailable`, `NearShareService.ble_status` becomes
+`"unavailable: <reason>"`, and NearShare **falls back to mDNS-only**
 automatically — visibility, sending, and receiving all keep working
 exactly as before BLE existed, just without the proactive wake-up (see
-[Limitations](#limitations)). `quickshare status`'s `ble` field and a
+[Limitations](#limitations)). `nearshare status`'s `ble` field and a
 banner in the GUI both surface this state.
 
 ### 2. Transport — TCP with length-prefixed frames
@@ -98,7 +98,7 @@ The initiator sends a plaintext `OfflineFrame` of type
 endpoint-info blob used in mDNS. This is the last plaintext frame that
 carries anything peer-identifying before encryption keys exist.
 
-### 4. Key exchange — UKEY2 (`quickshare/core/crypto.py`)
+### 4. Key exchange — UKEY2 (`nearshare/core/crypto.py`)
 
 `Ukey2Client` (initiator) and `Ukey2Server` (receiver) run Google's
 UKEY2 handshake using the `P256_SHA512` cipher:
@@ -136,7 +136,7 @@ and vice versa on the receiver.
 (`crypto.pin_code`, matching Android's exact algorithm) to produce the
 **4-digit PIN** shown on both screens. Because it's derived from the
 Diffie-Hellman secret itself, matching PINs is proof the ECDH wasn't
-intercepted — this is QuickShare's only identity verification (see
+intercepted — this is NearShare's only identity verification (see
 [Security notes](#security-notes)).
 
 From here, `crypto.D2DCipher` wraps every frame as a securegcm
@@ -149,12 +149,12 @@ per-direction sequence number that `D2DCipher.decrypt` enforces.
 Both sides exchange plaintext `CONNECTION_RESPONSE` frames (must be
 `ACCEPT`), then move to encrypted `OfflineFrame`s. Real Quick Share
 supports "paired key" trust — devices that share a Google account skip
-PIN confirmation. QuickShare holds no Google account certificates, so
+PIN confirmation. NearShare holds no Google account certificates, so
 it always sends a `PairedKeyEncryption` frame with random signed data
 and then reports `PairedKeyResult.UNABLE` (see
 `InboundConnection._handshake` / `OutboundConnection._handshake`) —
 exactly what NearDrop does. The peer falls back to PIN-based
-verification, which is what QuickShare relies on for every transfer.
+verification, which is what NearShare relies on for every transfer.
 
 ### 6. Introduction and transfer
 
@@ -230,41 +230,41 @@ sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
 python3 -m venv .venv
 .venv/bin/pip install zeroconf protobuf cryptography
 
-# Wire QuickShare into the desktop: PATH symlink, .desktop launchers,
-# and the Nautilus right-click "Send with QuickShare" script.
-bin/quickshare install
+# Wire NearShare into the desktop: PATH symlink, .desktop launchers,
+# and the Nautilus right-click "Send with NearShare" script.
+bin/nearshare install
 ```
 
-`bin/quickshare install` is idempotent (safe to re-run any time, e.g.
+`bin/nearshare install` is idempotent (safe to re-run any time, e.g.
 after moving the checkout) and prints each step as it goes:
 
-- Symlinks `bin/quickshare` to `~/.local/bin/quickshare` (and warns if
+- Symlinks `bin/nearshare` to `~/.local/bin/nearshare` (and warns if
   `~/.local/bin` isn't on your `PATH` — it is by default on Ubuntu for
   login shells).
-- Installs `quickshare.desktop` and `quickshare-toggle.desktop` into
+- Installs `nearshare.desktop` and `nearshare-toggle.desktop` into
   `~/.local/share/applications/`, with `Exec=` rewritten to the
   absolute installed launcher path, then best-effort refreshes the
   desktop database.
 - Installs a Nautilus script at `~/.local/share/nautilus/scripts/Send
-  with QuickShare` — see [Right-click sharing](#right-click-sharing-nautilus).
+  with NearShare` — see [Right-click sharing](#right-click-sharing-nautilus).
   Restart Nautilus (`nautilus -q`) for it to show up.
 - Prints (but does not run) the `gsettings` commands to bind
   Super+Shift+S to the visibility toggle — see
   [docs/SHORTCUT.md](docs/SHORTCUT.md) for the full explanation and a
   point-and-click alternative.
 
-Run `bin/quickshare uninstall` to remove everything `install` set up
+Run `bin/nearshare uninstall` to remove everything `install` set up
 (same idempotent, step-by-step style).
 
-`bin/quickshare` is a small shell wrapper that resolves this project's
-own path and execs `.venv/bin/python -m quickshare.cli` — it works
+`bin/nearshare` is a small shell wrapper that resolves this project's
+own path and execs `.venv/bin/python -m nearshare.cli` — it works
 whether you call it via the full path or the `~/.local/bin` symlink
-above, and it's what `quickshare.desktop`'s `Exec=quickshare gui` and
+above, and it's what `nearshare.desktop`'s `Exec=nearshare gui` and
 the keyboard shortcut in [docs/SHORTCUT.md](docs/SHORTCUT.md) both rely
 on being on `PATH`.
 
-The GUI itself is launched as `python -m quickshare` (the `quickshare`
-package's `__main__.py`); `quickshare gui` (and the desktop file) just
+The GUI itself is launched as `python -m nearshare` (the `nearshare`
+package's `__main__.py`); `nearshare gui` (and the desktop file) just
 exec that for you inside the project's venv.
 
 ## Usage
@@ -272,7 +272,7 @@ exec that for you inside the project's venv.
 ### GUI
 
 ```bash
-quickshare gui
+nearshare gui
 ```
 
 Opens the main window: a visibility switch, the nearby-devices list for
@@ -286,25 +286,25 @@ socket, so open the GUI first for anything except `send` (see below,
 which can also work standalone):
 
 ```bash
-quickshare status          # visibility, device name, peer count, BLE state
-quickshare on               # become visible
-quickshare off               # hide from nearby devices
-quickshare toggle            # flip visibility (fires a desktop notification)
-quickshare peers             # list currently-discoverable nearby devices
-quickshare send photo.jpg report.pdf --to "Pixel 8"
-quickshare send photo.jpg    # only one nearby peer? --to is optional
+nearshare status          # visibility, device name, peer count, BLE state
+nearshare on               # become visible
+nearshare off               # hide from nearby devices
+nearshare toggle            # flip visibility (fires a desktop notification)
+nearshare peers             # list currently-discoverable nearby devices
+nearshare send photo.jpg report.pdf --to "Pixel 8"
+nearshare send photo.jpg    # only one nearby peer? --to is optional
 ```
 
 Every subcommand accepts `--json` for scripting (raw JSON response
 instead of the human-readable summary). `status`'s response includes a
 `ble` field (`"on"`, `"off"`, or `"unavailable: <reason>"`) — see
-[BLE trigger advertising](#1a-ble-trigger-advertising-quicksharecoreblepy).
+[BLE trigger advertising](#1a-ble-trigger-advertising-nearsharecoreblepy).
 
 `on` and `toggle` are special-cased: if the app isn't running yet, they
-launch it for you (`python -m quickshare`, detached) instead of failing
-— so a keyboard shortcut bound to `quickshare toggle` always does
+launch it for you (`python -m nearshare`, detached) instead of failing
+— so a keyboard shortcut bound to `nearshare toggle` always does
 something useful. Every other subcommand (`off`, `status`, `peers`)
-just prints `QuickShare app is not running` and exits non-zero if
+just prints `NearShare app is not running` and exits non-zero if
 there's no app to talk to.
 
 `send` works even with no app running at all: it starts a temporary,
@@ -314,7 +314,7 @@ soon as the handshake produces one so you can confirm it against the
 receiving screen.
 
 **Reality check**: to *send* to something (an Android phone, a Windows
-PC, another Linux box), it only shows up in `quickshare peers` / the
+PC, another Linux box), it only shows up in `nearshare peers` / the
 GUI's device list while *its* Quick Share receive screen or share sheet
 is open — sending is one-directional discovery, this machine doesn't
 broadcast a BLE wake-up trigger *to* other devices, it only advertises
@@ -323,12 +323,12 @@ one for others to notice *this* machine. See
 
 ### Right-click sharing (Nautilus)
 
-After `bin/quickshare install` (and a Nautilus restart —
+After `bin/nearshare install` (and a Nautilus restart —
 `nautilus -q`), right-click one or more files in the Files app and
-choose **Scripts → Send with QuickShare**. This opens a small standalone
-picker dialog (`quickshare/ui/picker.py`, launched via
-`quickshare send-picker FILE...`) listing nearby devices; click one to
-send. It works whether or not the main QuickShare window is already
+choose **Scripts → Send with NearShare**. This opens a small standalone
+picker dialog (`nearshare/ui/picker.py`, launched via
+`nearshare send-picker FILE...`) listing nearby devices; click one to
+send. It works whether or not the main NearShare window is already
 open — if it is, the picker reuses its live peer list over the control
 socket; if not, it briefly browses on its own — and it always shows a
 progress bar and the PIN to confirm on the receiving screen, the same
@@ -338,19 +338,19 @@ as any other send.
 
 See [docs/SHORTCUT.md](docs/SHORTCUT.md) for exact GNOME Settings steps
 and a copy-paste `gsettings` one-liner to bind a key (suggested:
-Super+Shift+S) to `quickshare toggle` — or just run `bin/quickshare
+Super+Shift+S) to `nearshare toggle` — or just run `bin/nearshare
 install`, which prints the same commands (see [Install](#install)).
 
 ## Direct mode (experimental)
 
 When there's no WiFi network in common with the other device (hotel,
-train), Direct mode has QuickShare stand up its own WiFi hotspot via
+train), Direct mode has NearShare stand up its own WiFi hotspot via
 `nmcli`, show a QR code (standard `WIFI:` format) for the phone to scan,
 and once the phone joins, the normal mDNS + transfer flow above runs on
 that subnet. It's labeled experimental because hotspot creation depends
 on NetworkManager permissions and AP-capable WiFi hardware, and it
 temporarily takes the laptop off its regular network. This piece lives
-outside `quickshare/core/` (see the GUI's hotspot integration) and isn't
+outside `nearshare/core/` (see the GUI's hotspot integration) and isn't
 covered further here.
 
 ## Limitations
@@ -359,18 +359,18 @@ covered further here.
   transfers.
 - **Receiving (phone → Linux) needs BLE for proactive discovery** —
   while visible, this machine broadcasts a BLE trigger (see
-  [BLE trigger advertising](#1a-ble-trigger-advertising-quicksharecoreblepy))
+  [BLE trigger advertising](#1a-ble-trigger-advertising-nearsharecoreblepy))
   so an Android phone's share sheet notices it without the phone doing
   anything first. That requires BlueZ and an LE-capable adapter; if
-  either is missing, QuickShare falls back to mDNS-only automatically
-  (`quickshare status`'s `ble` field, and a banner in the GUI, both flag
+  either is missing, NearShare falls back to mDNS-only automatically
+  (`nearshare status`'s `ble` field, and a banner in the GUI, both flag
   this), and in that fallback case the phone's Quick Share sheet must
   already be open for it to see this machine at all.
 - **Sending (Linux → phone) always needs the phone's screen open** —
   this machine has no way to wake up the *other* device; to send
   something to a phone (or any peer), its Quick Share receive screen
   (or share sheet) must already be open so it shows up in
-  `quickshare peers` / the device list in the first place.
+  `nearshare peers` / the device list in the first place.
 - **No contact-based visibility** — v1 only implements "Everyone"-style
   visibility; there's no "Contacts only" or "Your devices" mode, and
   the phone will show this machine under its "Everyone" list.
@@ -386,12 +386,12 @@ covered further here.
   P-256 that neither side could have influenced ahead of time.
 - **PIN verification is the trust anchor**: the commitment scheme in
   UKEY2 (§4 above) guarantees that if both screens show the same
-  4-digit PIN, the key exchange wasn't tampered with. QuickShare has no
+  4-digit PIN, the key exchange wasn't tampered with. NearShare has no
   other identity check — always compare the PIN before accepting a
   transfer from a device you don't recognize.
 - **What `PairedKeyResult.UNABLE` means**: Quick Share normally lets
   devices signed into the same Google account skip PIN confirmation
-  ("paired key" trust). QuickShare doesn't implement Google account
+  ("paired key" trust). NearShare doesn't implement Google account
   certificates at all, so it always reports `UNABLE` to pair that way,
   which forces PIN confirmation on *every single transfer* — there is
   no way to mark a device as permanently trusted. This is a deliberate
@@ -419,10 +419,10 @@ for interoperability purposes.
   reference macOS implementation whose published protocol notes and
   protobuf schema set documented the UKEY2 handshake, the paired-key
   `UNABLE` fallback, and the mDNS instance-name encoding.
-- **[rquickshare](https://github.com/Martichou/rquickshare)** by
+- **[rnearshare](https://github.com/Martichou/rnearshare)** by
   Martichou — the reference Rust implementation, source of the BLE
   trigger beacon payload and service UUID used in
-  `quickshare/core/ble.py`.
+  `nearshare/core/ble.py`.
 
 Without those two projects' public documentation of the protocol, this
 implementation would not exist.

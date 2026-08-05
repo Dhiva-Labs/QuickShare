@@ -1,13 +1,13 @@
-"""Command-line control for the running QuickShare app.
+"""Command-line control for the running NearShare app.
 
-Talks JSON-lines to the Unix control socket the app's QuickShareService
-opens at quickshare.core.service.control_socket_path(): connect, send one
+Talks JSON-lines to the Unix control socket the app's NearShareService
+opens at nearshare.core.service.control_socket_path(): connect, send one
 JSON request, read one JSON response line, print a human-friendly summary
-(or the raw JSON with --json). See QuickShareService._dispatch_control
+(or the raw JSON with --json). See NearShareService._dispatch_control
 for the request/response shapes.
 
 Reality check: an Android phone (or any peer) only shows up in
-`quickshare peers`, and can only be sent to, while its own Quick Share
+`nearshare peers`, and can only be sent to, while its own Quick Share
 receive screen (or share sheet) is open — Quick Share has no persistent
 background discovery, so "not visible right now" is the normal state.
 """
@@ -32,19 +32,19 @@ from .core.service import control_socket_path
 SOCKET_TIMEOUT = 5.0
 PEER_WAIT_TIMEOUT = 20.0
 
-NOT_RUNNING_MSG = "QuickShare app is not running"
+NOT_RUNNING_MSG = "NearShare app is not running"
 NO_PEERS_MSG = ("No nearby devices found. On the target device, open Quick "
                "Share's receive screen (or the share sheet) so it becomes "
                "discoverable.")
 
 # ---------------------------------------------------- install/uninstall
 
-# This file lives at <project>/quickshare/cli.py, so its grandparent is
+# This file lives at <project>/nearshare/cli.py, so its grandparent is
 # the project root -- resolved once here rather than re-derived per call.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BIN_SCRIPT = PROJECT_ROOT / "bin" / "quickshare"
+BIN_SCRIPT = PROJECT_ROOT / "bin" / "nearshare"
 DESKTOP_DIR = PROJECT_ROOT / "data"
-NAUTILUS_SCRIPT_NAME = "Send with QuickShare"
+NAUTILUS_SCRIPT_NAME = "Send with NearShare"
 
 
 def _desktop_file_names() -> list[str]:
@@ -89,7 +89,7 @@ def _not_running() -> int:
 def _launch_gui() -> None:
     """Start the GUI app detached, so the CLI/shortcut can return right
     away and the app keeps running after this process exits."""
-    subprocess.Popen([sys.executable, "-m", "quickshare"],
+    subprocess.Popen([sys.executable, "-m", "nearshare"],
                      start_new_session=True, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -117,7 +117,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(json.dumps(resp))
         return 0
     state = "visible" if resp.get("visible") else "hidden"
-    print(f"QuickShare is {state}")
+    print(f"NearShare is {state}")
     print(f"  device name : {resp.get('device_name', '?')}")
     if resp.get("port") is not None:
         print(f"  listening   : port {resp['port']}")
@@ -133,7 +133,7 @@ def _cmd_visibility(args: argparse.Namespace, cmd: str) -> int:
         if cmd in ("on", "toggle"):
             _launch_gui()
             print(f"{NOT_RUNNING_MSG}; starting it now (python -m "
-                 "quickshare)...")
+                 "nearshare)...")
             return 0
         return _not_running()
     if args.json:
@@ -143,7 +143,7 @@ def _cmd_visibility(args: argparse.Namespace, cmd: str) -> int:
             else "Hidden from nearby devices")
     print(state)
     if cmd == "toggle":
-        _notify("QuickShare", state)
+        _notify("NearShare", state)
     return 0
 
 
@@ -201,7 +201,7 @@ def cmd_rename(args: argparse.Namespace) -> int:
     ip = _resolve_target_ip(args.target)
     if ip is None:
         print(f"No device matching {args.target!r}. Pass an IP, or run "
-              "`quickshare peers` while the app is running.", file=sys.stderr)
+              "`nearshare peers` while the app is running.", file=sys.stderr)
         return 1
     names.remember(ip, args.name, manual=True)
     print(f"{ip} will now show as {args.name!r}")
@@ -230,7 +230,7 @@ def cmd_forget(args: argparse.Namespace) -> int:
 
 def cmd_gui(args: argparse.Namespace) -> int:
     """Exec the GUI app in place of this process."""
-    os.execv(sys.executable, [sys.executable, "-m", "quickshare"])
+    os.execv(sys.executable, [sys.executable, "-m", "nearshare"])
     return 0  # pragma: no cover - unreachable, execv replaces the process
 
 
@@ -312,9 +312,9 @@ async def _send_ephemeral(files: list[str], to: str | None) -> int:
     """No app is running: start just enough of the service in-process to
     browse for peers and send directly, then tear it down."""
     from .core.connection import Events, OutboundConnection
-    from .core.service import QuickShareService
+    from .core.service import NearShareService
 
-    service = QuickShareService()
+    service = NearShareService()
     print(f"{NOT_RUNNING_MSG}; looking for nearby devices as "
          f"{service.device_name!r} (waiting up to "
          f"{int(PEER_WAIT_TIMEOUT)}s)...")
@@ -364,12 +364,12 @@ async def _send_ephemeral(files: list[str], to: str | None) -> int:
 
 # --------------------------------------------------------------- install
 #
-# `quickshare install` wires the project into the desktop: a PATH symlink,
+# `nearshare install` wires the project into the desktop: a PATH symlink,
 # the .desktop launchers, and a Nautilus right-click script. Every step
 # is idempotent (safe to re-run) and every path is resolved through
 # Path.home() / $XDG_DATA_HOME at call time (not import time) so tests
 # can monkeypatch HOME/XDG_DATA_HOME and exercise the real code against
-# a throwaway fake home directory. `quickshare uninstall` reverses each
+# a throwaway fake home directory. `nearshare uninstall` reverses each
 # step; neither subcommand touches the GNOME keyboard shortcut (that's a
 # gsettings change to the user's own desktop config, so we only print the
 # commands -- see _print_shortcut_commands).
@@ -393,7 +393,7 @@ def _nautilus_scripts_dir() -> Path:
 
 
 def _installed_bin_path() -> Path:
-    return _bin_dir() / "quickshare"
+    return _bin_dir() / "nearshare"
 
 
 def _path_has_dir(target: Path) -> bool:
@@ -428,13 +428,13 @@ def _uninstall_symlink() -> None:
         print(f"  no symlink at {target} (already removed)")
 
 
-def _rewrite_exec(content: str, quickshare_bin: Path) -> str:
+def _rewrite_exec(content: str, nearshare_bin: Path) -> str:
     """Point a .desktop file's Exec= line at the installed launcher.
 
-    e.g. "Exec=quickshare gui" -> "Exec=/home/alice/.local/bin/quickshare
+    e.g. "Exec=nearshare gui" -> "Exec=/home/alice/.local/bin/nearshare
     gui" -- the absolute path so the entry works even if ~/.local/bin
     isn't on PATH for the process that launches .desktop files."""
-    return re.sub(r"^Exec=quickshare\b", f"Exec={quickshare_bin}", content,
+    return re.sub(r"^Exec=nearshare\b", f"Exec={nearshare_bin}", content,
                  flags=re.MULTILINE)
 
 
@@ -458,16 +458,16 @@ def _update_desktop_database(apps_dir: Path) -> None:
 def _install_desktop_files() -> None:
     apps_dir = _applications_dir()
     apps_dir.mkdir(parents=True, exist_ok=True)
-    quickshare_bin = _installed_bin_path()
+    nearshare_bin = _installed_bin_path()
     for name in _desktop_file_names():
         content = (DESKTOP_DIR / name).read_text()
-        rewritten = _rewrite_exec(content, quickshare_bin)
+        rewritten = _rewrite_exec(content, nearshare_bin)
         dest = apps_dir / name
         if dest.exists() and dest.read_text() == rewritten:
             print(f"  {dest} already up to date")
         else:
             dest.write_text(rewritten)
-            print(f"  installed {dest} (Exec rewritten to {quickshare_bin})")
+            print(f"  installed {dest} (Exec rewritten to {nearshare_bin})")
     _update_desktop_database(apps_dir)
 
 
@@ -487,7 +487,7 @@ def _uninstall_desktop_files() -> None:
 
 
 _NAUTILUS_SCRIPT_TEMPLATE = """#!/usr/bin/env bash
-# Installed by `quickshare install` -- re-run install to update, don't
+# Installed by `nearshare install` -- re-run install to update, don't
 # hand-edit (your changes would just be overwritten next install).
 #
 # Nautilus runs this with the user's selection in
@@ -503,15 +503,15 @@ if [[ ${{#files[@]}} -eq 0 ]]; then
     exit 0
 fi
 
-exec "{quickshare_bin}" send-picker "${{files[@]}}"
+exec "{nearshare_bin}" send-picker "${{files[@]}}"
 """
 
 
-_ICON_NAME = "dev.dhivalabs.quickshare.svg"
+_ICON_NAME = "dev.dhivalabs.nearshare.svg"
 _ICON_SOURCE = PROJECT_ROOT / "data" / "icons" / _ICON_NAME
 # Desktop files from older installs that current data/ no longer ships;
 # cleaned up on install and uninstall.
-_LEGACY_DESKTOP_FILES = ("quickshare.desktop",)
+_LEGACY_DESKTOP_FILES = ("nearshare.desktop",)
 
 
 def _icon_dest() -> Path:
@@ -558,9 +558,9 @@ def _remove_legacy_desktop_files() -> None:
 # A nautilus-python extension gives a TOP-LEVEL context-menu item (the
 # Scripts submenu is the best plain scripts can do). Requires the distro
 # package `python3-nautilus`; installing the file without it is harmless.
-_NAUTILUS_EXTENSION_TEMPLATE = '''"""Top-level "Send with QuickShare" context-menu item for Nautilus.
+_NAUTILUS_EXTENSION_TEMPLATE = '''"""Top-level "Send with NearShare" context-menu item for Nautilus.
 
-Installed by `quickshare install`. Requires the python3-nautilus package
+Installed by `nearshare install`. Requires the python3-nautilus package
 (apt). Nautilus loads this from ~/.local/share/nautilus-python/extensions.
 """
 import subprocess
@@ -569,7 +569,7 @@ from urllib.parse import unquote, urlparse
 from gi.repository import GObject, Nautilus
 
 
-class QuickShareMenu(GObject.GObject, Nautilus.MenuProvider):
+class NearShareMenu(GObject.GObject, Nautilus.MenuProvider):
     def get_file_items(self, files):
         paths = []
         for f in files:
@@ -579,8 +579,8 @@ class QuickShareMenu(GObject.GObject, Nautilus.MenuProvider):
         if not paths:
             return []
         item = Nautilus.MenuItem(
-            name="QuickShareMenu::send",
-            label="Send with QuickShare",
+            name="NearShareMenu::send",
+            label="Send with NearShare",
             tip="Send the selected files to a nearby device")
         item.connect("activate", self._activate, paths)
         return [item]
@@ -608,7 +608,7 @@ def _nautilus_python_available() -> bool:
 def _install_nautilus_extension() -> None:
     ext_dir = _nautilus_extensions_dir()
     ext_dir.mkdir(parents=True, exist_ok=True)
-    dest = ext_dir / "quickshare_menu.py"
+    dest = ext_dir / "nearshare_menu.py"
     content = _NAUTILUS_EXTENSION_TEMPLATE.replace(
         "{launcher}", str(_installed_bin_path()))
     if dest.exists() and dest.read_text() == content:
@@ -627,7 +627,7 @@ def _install_nautilus_extension() -> None:
 
 
 def _uninstall_nautilus_extension() -> None:
-    dest = _nautilus_extensions_dir() / "quickshare_menu.py"
+    dest = _nautilus_extensions_dir() / "nearshare_menu.py"
     if dest.exists():
         dest.unlink()
         print(f"  removed {dest} (restart Files: nautilus -q)")
@@ -640,7 +640,7 @@ def _install_nautilus_script() -> None:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     dest = scripts_dir / NAUTILUS_SCRIPT_NAME
     content = _NAUTILUS_SCRIPT_TEMPLATE.format(
-        quickshare_bin=_installed_bin_path())
+        nearshare_bin=_installed_bin_path())
     already_current = (dest.exists() and dest.read_text() == content and
                        os.access(dest, os.X_OK))
     if already_current:
@@ -668,10 +668,10 @@ def _print_shortcut_commands() -> None:
     filled in with the installed launcher's absolute path -- gsettings
     custom-keybinding commands run outside any login shell, so PATH isn't
     reliable there even once ~/.local/bin is added to it."""
-    quickshare_bin = _installed_bin_path()
+    nearshare_bin = _installed_bin_path()
     key_base = "org.gnome.settings-daemon.plugins.media-keys"
     key_path = ("/org/gnome/settings-daemon/plugins/media-keys/"
-               "custom-keybindings/quickshare-toggle/")
+               "custom-keybindings/nearshare-toggle/")
     print("  To bind Super+Shift+S to toggle visibility (see "
          "docs/SHORTCUT.md for the GUI steps), run:")
     print()
@@ -683,22 +683,22 @@ def _print_shortcut_commands() -> None:
     print('    fi')
     print(f'    gsettings set {key_base} custom-keybindings "$new"')
     print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
-         f'command "{quickshare_bin} toggle"')
+         f'command "{nearshare_bin} toggle"')
     print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
-         'name "QuickShare: Toggle Visibility"')
+         'name "NearShare: Toggle Visibility"')
     print(f'    gsettings set {key_base}.custom-keybinding:{key_path} '
          'binding "<Super><Shift>s"')
 
 
 def cmd_install(args: argparse.Namespace) -> int:
-    print("Installing QuickShare desktop integration...")
+    print("Installing NearShare desktop integration...")
     print("[1/5] CLI launcher symlink")
     _install_symlink()
     print("[2/5] Desktop entries + app icon (~/.local/share)")
     _remove_legacy_desktop_files()
     _install_desktop_files()
     _install_icon()
-    print("[3/5] Nautilus \"Send with QuickShare\" script (Scripts submenu)")
+    print("[3/5] Nautilus \"Send with NearShare\" script (Scripts submenu)")
     _install_nautilus_script()
     print("[4/5] Nautilus top-level right-click item (extension)")
     _install_nautilus_extension()
@@ -709,14 +709,14 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
-    print("Uninstalling QuickShare desktop integration...")
+    print("Uninstalling NearShare desktop integration...")
     print("[1/4] CLI launcher symlink")
     _uninstall_symlink()
     print("[2/4] Desktop entries + app icon")
     _remove_legacy_desktop_files()
     _uninstall_desktop_files()
     _uninstall_icon()
-    print("[3/4] Nautilus \"Send with QuickShare\" script")
+    print("[3/4] Nautilus \"Send with NearShare\" script")
     _uninstall_nautilus_script()
     print("[4/4] Nautilus extension")
     _uninstall_nautilus_extension()
@@ -727,7 +727,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
 # -------------------------------------------------------------- picker
 
 def cmd_send_picker(args: argparse.Namespace) -> int:
-    """Launch the GTK "send to nearby device" dialog (quickshare/ui/
+    """Launch the GTK "send to nearby device" dialog (nearshare/ui/
     picker.py) for files already resolved on the command line -- this is
     what the installed Nautilus script execs, so it must work with no
     terminal attached and whether or not the main GUI app is running."""
@@ -744,8 +744,8 @@ def cmd_send_picker(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="quickshare",
-        description="Control the QuickShare app: toggle visibility, list "
+        prog="nearshare",
+        description="Control the NearShare app: toggle visibility, list "
                     "nearby devices, and send files, all without opening "
                     "the GUI.",
         epilog="Reality check: nearby devices (including an Android phone) "
@@ -779,17 +779,17 @@ def build_parser() -> argparse.ArgumentParser:
                        help="list nearby discoverable devices")
     p.set_defaults(func=cmd_peers)
 
-    p = sub.add_parser("gui", help="launch the QuickShare GUI")
+    p = sub.add_parser("gui", help="launch the NearShare GUI")
     p.set_defaults(func=cmd_gui)
 
     p = sub.add_parser(
         "rename", help="give a nearby device a friendly name",
         description="Assign a permanent name to a device by IP. Modern "
                     "Android hides its user-set name in advertisements, "
-                    "so QuickShare otherwise shows e.g. 'Phone (6SWJ)' "
+                    "so NearShare otherwise shows e.g. 'Phone (6SWJ)' "
                     "until that device sends you something.")
     p.add_argument("target", metavar="IP_OR_NAME",
-                   help="device IP (see `quickshare peers`), or its "
+                   help="device IP (see `nearshare peers`), or its "
                         "currently-shown name")
     p.add_argument("name", help="the name to show from now on")
     p.set_defaults(func=cmd_rename)
@@ -816,7 +816,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="GTK dialog to pick a nearby device to send file(s) to",
         description="Open a small GTK dialog listing nearby devices for "
                     "the given file(s); used by the Nautilus right-click "
-                    "script installed by `quickshare install`, but can be "
+                    "script installed by `nearshare install`, but can be "
                     "run directly too.")
     p.add_argument("files", nargs="+", help="file(s) to send")
     p.set_defaults(func=cmd_send_picker)
@@ -829,7 +829,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "uninstall",
-        help="remove everything `quickshare install` set up")
+        help="remove everything `nearshare install` set up")
     p.set_defaults(func=cmd_uninstall)
 
     return parser

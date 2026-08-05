@@ -1,14 +1,14 @@
 """Standalone GTK4 + libadwaita "send to nearby device" dialog.
 
-Launched by `quickshare send-picker FILE...` (see cli.py's
+Launched by `nearshare send-picker FILE...` (see cli.py's
 cmd_send_picker), which in turn is what the Nautilus "Send with
-QuickShare" script installed by `quickshare install` execs for the
+NearShare" script installed by `nearshare install` execs for the
 files selected in the file manager -- see cli.py's
 _install_nautilus_script. That means this module must come up and work
 with **no terminal attached** (stdout/stderr may go nowhere) and
-**regardless of whether the main QuickShare app (ui/app.py) is already
+**regardless of whether the main NearShare app (ui/app.py) is already
 running**, since a user might right-click a file whether or not they
-have the QuickShare window open.
+have the NearShare window open.
 
 Two independently-varying things, each with its own fallback:
 
@@ -16,7 +16,7 @@ Two independently-varying things, each with its own fallback:
     (core/service.py's `peers` command) already has a live mDNS browser
     doing this work, so we just poll it rather than duplicate a second
     browser. If nothing answers the socket, this process starts its own
-    ephemeral, UI-less QuickShareService and drives its Browser directly
+    ephemeral, UI-less NearShareService and drives its Browser directly
     (mirrors cli.py's `_send_ephemeral`, adapted to push updates into a
     dialog instead of a terminal).
 
@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 # --- gi import glue ---------------------------------------------------
-# Copied from quickshare/__main__.py (owned by another engineer this
+# Copied from nearshare/__main__.py (owned by another engineer this
 # round, and not something this task may edit or import from): PyGObject
 # and the GTK4/libadwaita typelibs come from the distro's python3-gi /
 # gir1.2-gtk-4.0 / gir1.2-adw-1 packages under
@@ -72,7 +72,7 @@ def _ensure_gi_importable() -> None:
         import gi  # noqa: F401
     except ImportError as exc:
         sys.exit(
-            "quickshare: could not import PyGObject ('gi') even after "
+            "nearshare: could not import PyGObject ('gi') even after "
             "adding the system dist-packages directories to sys.path. "
             "Install python3-gi, gir1.2-gtk-4.0, and gir1.2-adw-1 (e.g. "
             "`sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`) "
@@ -89,11 +89,11 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from ..core.connection import Events, OutboundConnection  # noqa: E402
 from ..core.mdns import Peer  # noqa: E402
-from ..core.service import (QuickShareService, control_socket_path,  # noqa: E402
+from ..core.service import (NearShareService, control_socket_path,  # noqa: E402
                             default_device_name)
 from .asyncio_glue import AsyncioThread, idle  # noqa: E402
 
-log = logging.getLogger("quickshare.ui.picker")
+log = logging.getLogger("nearshare.ui.picker")
 
 PROBE_TIMEOUT = 1.5   # quick "is the app running" check
 SOCKET_TIMEOUT = 5.0  # normal peers-poll request/response
@@ -151,7 +151,7 @@ class PickerWindow(Adw.ApplicationWindow):
     def __init__(self, application: "PickerApplication",
                 files: list[Path]) -> None:
         super().__init__(application=application,
-                         title="Send with QuickShare",
+                         title="Send with NearShare",
                          default_width=420, default_height=480)
         self.app = application
         self.files = files
@@ -248,9 +248,9 @@ class PickerWindow(Adw.ApplicationWindow):
         return row
 
     def show_connection_lost(self) -> None:
-        self._empty_row.set_title("Lost the QuickShare app")
+        self._empty_row.set_title("Lost the NearShare app")
         self._empty_row.set_subtitle(
-            "The running QuickShare app stopped responding; try again, or "
+            "The running NearShare app stopped responding; try again, or "
             "quit and relaunch it.")
         self._empty_row.set_visible(True)
 
@@ -288,12 +288,12 @@ class PickerWindow(Adw.ApplicationWindow):
 
 class PickerApplication(Adw.Application):
     def __init__(self, files: list[Path]) -> None:
-        super().__init__(application_id="dev.dhivalabs.quickshare.picker",
+        super().__init__(application_id="dev.dhivalabs.nearshare.picker",
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.files = files
         self.asyncio_thread = AsyncioThread()
         self.window: PickerWindow | None = None
-        self.service: QuickShareService | None = None  # ephemeral mode only
+        self.service: NearShareService | None = None  # ephemeral mode only
         self.device_name: str | None = None
         self._closed = False
 
@@ -368,7 +368,7 @@ class PickerApplication(Adw.Application):
         self.window.update_peers(peers)
 
     def _start_ephemeral_browser(self) -> None:
-        self.service = QuickShareService()
+        self.service = NearShareService()
         self.device_name = self.service.device_name
         self.service.on_peers_changed = lambda peers: idle(
             self._safe_window_call("update_peers", peers))
