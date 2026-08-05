@@ -1,0 +1,48 @@
+Source: quickshare
+Section: net
+Priority: optional
+Maintainer: Dhiva Labs <dhivakar1010@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               python3,
+               python3-grpc-tools
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: quickshare
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.12),
+         python3-gi,
+         gir1.2-gtk-4.0,
+         gir1.2-adw-1,
+         python3-zeroconf,
+         python3-protobuf,
+         python3-cryptography
+# network-manager is only needed for "Direct mode" (the ad-hoc WiFi hotspot
+# fallback, quickshare/core/hotspot.py's nmcli calls); bluez is only needed
+# for the BLE trigger advertisement/scan (quickshare/core/ble.py) that lets
+# a nearby Android phone notice this machine proactively. Both features
+# degrade gracefully (mDNS-only, no Direct mode) when their backend is
+# missing, so neither is a hard Depends.
+Recommends: network-manager, bluez
+# The Nautilus right-click "Send with QuickShare" top-level menu item
+# (quickshare/cli.py's _install_nautilus_extension) needs python3-nautilus
+# to load; without it, `quickshare install` still wires up the Scripts
+# submenu fallback, which needs nothing extra.
+Suggests: python3-nautilus
+Description: Quick Share (Nearby Share) for the GNOME desktop
+ QuickShare is a GTK4/libadwaita implementation of Google's Quick Share
+ (formerly Nearby Share) wire protocol for Linux. It speaks the same mDNS
+ discovery, BLE trigger advertising, UKEY2 key exchange, and encrypted
+ transfer framing as the real thing, so it interoperates directly with
+ Android Quick Share, Windows Quick Share, macOS NearDrop, and other
+ QuickShare instances -- no cables, no cloud account, and no companion
+ app on the phone.
+ .
+ Every transfer is end-to-end encrypted (AES-256-CBC + HMAC-SHA256, keys
+ from an ECDH exchange over P-256) and confirmed with a 4-digit PIN shown
+ on both screens; QuickShare has no Google-account trust, so every
+ transfer needs a manual PIN confirmation.
+ .
+ Includes a GTK4 GUI, a `quickshare` CLI for scripting and keyboard
+ shortcuts, and a Nautilus right-click "Send with QuickShare" integration.

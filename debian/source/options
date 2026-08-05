@@ -1,0 +1,16 @@
+# dpkg-source (native format) tars up the whole working tree; none of
+# these belong in the source package. A bare -I/--tar-ignore (no pattern)
+# pulls in dpkg-source's own default excludes (.git, .svn, and other VCS
+# control directories, backup/swap files, Libtool output) -- without it,
+# "3.0 (native)" happily packs the entire .git/ history into the tarball.
+# .venv/ is the developer's own virtualenv (can be gigabytes with
+# pip-installed wheels); __pycache__/ and *.pyc are stale bytecode;
+# quickshare/proto/*_pb2.py are the generated protobuf bindings that
+# debian/rules regenerates at build time (see the comment in debian/rules
+# override_dh_auto_build for why they must not be the ones shipped in the
+# tarball).
+tar-ignore
+tar-ignore = ".venv"
+tar-ignore = "__pycache__"
+tar-ignore = "*.pyc"
+tar-ignore = "quickshare/proto/*_pb2.py"
