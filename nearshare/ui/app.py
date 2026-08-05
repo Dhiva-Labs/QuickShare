@@ -18,6 +18,7 @@ into the service goes back out via `self.app.asyncio_thread.run_coroutine`.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -39,6 +40,16 @@ from .qrcode import QrCodeArea, wifi_qr_payload  # noqa: E402
 log = logging.getLogger("nearshare.ui.app")
 
 APP_ID = "dev.dhivalabs.nearshare"
+
+# Inside a strictly-confined snap, AppArmor only permits owning a
+# session-bus name matching the snap's own name: registering as APP_ID
+# fails with "not allowed to own the service" and the GUI never starts.
+# A dbus slot would grant it, but that forces the snap into the Snap
+# Store's manual review queue, so use the already-permitted name. The
+# desktop file and icon keep their reverse-DNS identity either way --
+# only the bus name differs, and only under snap confinement.
+BUS_ID = (os.environ.get("SNAP_INSTANCE_NAME", APP_ID)
+          if os.environ.get("SNAP") else APP_ID)
 
 _DEVICE_TYPE_NAMES = {0: "Unknown device", 1: "Phone", 2: "Tablet", 3: "Laptop"}
 
@@ -596,7 +607,7 @@ class NearShareApplication(Adw.Application):
     alive with zero windows open."""
 
     def __init__(self) -> None:
-        super().__init__(application_id=APP_ID,
+        super().__init__(application_id=BUS_ID,
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.asyncio_thread = AsyncioThread()
         self.hotspot = Hotspot()
