@@ -5,5 +5,12 @@ Comment=Send the selected files to a nearby device with NearShare
 Exec=nearshare send-picker %F
 Icon=dev.dhivalabs.nearshare
 Terminal=false
-Categories=Utility;FileTransfer;
+Categories=Network;FileTransfer;
 NoDisplay=false
+# Without a MimeType this entry never appears in the file manager's
+# "Open With" list. There is no valid wildcard -- "all/all" is rejected
+# by desktop-file-validate -- so declare the types people actually
+# share, plus application/octet-stream for anything unrecognised.
+# "Open With -> Other Application..." lists the app for every file type
+# regardless.
+MimeType=application/octet-stream;application/pdf;application/zip;application/gzip;application/x-tar;application/x-7z-compressed;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/msword;application/vnd.ms-excel;application/epub+zip;application/json;application/xml;text/plain;text/csv;text/html;text/markdown;image/jpeg;image/png;image/gif;image/webp;image/heif;image/tiff;image/bmp;image/svg+xml;audio/mpeg;audio/ogg;audio/flac;audio/wav;audio/aac;audio/x-m4a;video/mp4;video/x-matroska;video/quicktime;video/webm;video/x-msvideo;

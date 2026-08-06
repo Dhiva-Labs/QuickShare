@@ -1,3 +1,9 @@
+nearshare (1.0.8~noble1) noble; urgency=medium
+
+  * Declare MimeType so the send entry appears in Open With.
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 15:27:55 +0530
+
 nearshare (1.0.7~noble1) noble; urgency=medium
 
   * Fix row overlap in narrow windows; add Open With entry for the snap.
