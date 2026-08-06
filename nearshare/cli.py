@@ -1025,20 +1025,40 @@ def integration_status() -> dict[str, Any]:
     (the launcher already being on PATH via /snap/bin, and the
     shortcut)."""
     snap = _in_snap()
-    launcher_on_path = shutil.which("nearshare") is not None
+    # Inside the snap the sandbox's own PATH doesn't contain /snap/bin,
+    # so which() misses the launcher the user's shell can actually see.
+    launcher_on_path = (shutil.which("nearshare") is not None or
+                        (snap and Path("/snap/bin/nearshare").exists()))
     desktop_entries = all((_applications_dir() / name).exists()
                           for name in _desktop_file_names())
     nautilus = ((_nautilus_scripts_dir() / NAUTILUS_SCRIPT_NAME).exists() or
-               (_nautilus_extensions_dir() / "nearshare_menu.py").exists())
+               (_nautilus_extensions_dir() / "nearshare_menu.py").exists() or
+               Path("/usr/share/nautilus-python/extensions/"
+                    "nearshare_menu.py").exists())
     shortcut = _shortcut_is_ours()
     shortcut_accel = bound_shortcut_accelerator() if shortcut else None
+    # Distinguish "not done" from "cannot be done here". Under snap the
+    # home directory is off-limits and the GNOME keybinding schema is
+    # invisible, so offering to fix either would be an empty promise --
+    # the button would run and change nothing.
+    shortcut_fixable = _gsettings_available()
+    home_fixable = not snap
+    nautilus_fixable = not snap
     if snap:
-        complete = launcher_on_path and shortcut
+        complete = launcher_on_path and (shortcut or not shortcut_fixable)
     else:
         complete = launcher_on_path and desktop_entries and nautilus and shortcut
+    anything_fixable = ((not shortcut and shortcut_fixable) or
+                        (not nautilus and nautilus_fixable) or
+                        (not desktop_entries and home_fixable) or
+                        (not launcher_on_path and home_fixable))
     return {"snap": snap, "launcher_on_path": launcher_on_path,
             "desktop_entries": desktop_entries, "nautilus": nautilus,
             "shortcut": shortcut, "shortcut_accel": shortcut_accel,
+            "shortcut_fixable": shortcut_fixable,
+            "home_fixable": home_fixable,
+            "nautilus_fixable": nautilus_fixable,
+            "anything_fixable": anything_fixable,
             "complete": complete}
 
 

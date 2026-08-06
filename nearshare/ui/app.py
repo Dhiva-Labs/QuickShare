@@ -215,16 +215,18 @@ class NearShareWindow(Adw.ApplicationWindow):
                        "install` aren't done yet.")
 
         self._setup_rows: dict[str, Adw.ActionRow] = {}
+        self._setup_row_icons: dict[str, Gtk.Image] = {}
         for key, title in (
             ("launcher_on_path", "Command-line launcher on PATH"),
             ("desktop_entries", "Desktop app entries (app grid, search)"),
             ("nautilus", "Nautilus right-click “Send with NearShare”"),
         ):
             row = Adw.ActionRow(title=title, selectable=False)
-            row.add_prefix(
-                Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            icon = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+            row.add_prefix(icon)
             self.setup_group.add(row)
             self._setup_rows[key] = row
+            self._setup_row_icons[key] = icon
 
         # The shortcut row stays visible even once bound (unlike the
         # three above, which just disappear when done) so it always
@@ -243,9 +245,13 @@ class NearShareWindow(Adw.ApplicationWindow):
             subtitle="Strict snap confinement can't write the Files "
                     "(Nautilus) extension. Run in a terminal:",
             selectable=False)
-        self._deb_command_entry = Gtk.Entry(
-            text=_APT_INSTALL_COMMAND, editable=False, hexpand=True,
-            valign=Gtk.Align.CENTER, css_classes=["monospace"])
+        # A Gtk.Entry clips the command to one un-scrollable line (the
+        # command is longer than the window is wide). A wrapping,
+        # selectable label shows all of it.
+        self._deb_command_entry = Gtk.Label(
+            label=_APT_INSTALL_COMMAND, selectable=True, wrap=True,
+            xalign=0.0, hexpand=True, valign=Gtk.Align.CENTER,
+            css_classes=["monospace"])
         copy_button = Gtk.Button(
             icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER,
             tooltip_text="Copy")
@@ -274,22 +280,54 @@ class NearShareWindow(Adw.ApplicationWindow):
         startup and again after the Finish-setup button's install run
         completes."""
         status = cli.integration_status()
+        # A row is hidden when done. When it is not done but also cannot
+        # be fixed from here (snap confinement), it stays visible as
+        # information -- an "unavailable" icon and a reason -- rather
+        # than a warning the button silently fails to clear.
+        fixable_for = {"launcher_on_path": status["home_fixable"],
+                       "desktop_entries": status["home_fixable"],
+                       "nautilus": status["nautilus_fixable"]}
+        reason_for = {
+            "launcher_on_path": "Provided by the snap as `nearshare`",
+            "desktop_entries": "Installed by the snap itself",
+            "nautilus": "Needs the .deb build — see below",
+        }
         for key, row in self._setup_rows.items():
-            row.set_visible(not status[key])
+            done = status[key]
+            row.set_visible(not done)
+            if done:
+                continue
+            if fixable_for[key]:
+                row.set_subtitle("")
+                self._setup_row_icons[key].set_from_icon_name(
+                    "dialog-warning-symbolic")
+            else:
+                row.set_subtitle(reason_for[key])
+                self._setup_row_icons[key].set_from_icon_name(
+                    "dialog-information-symbolic")
 
         if status["shortcut"] and status["shortcut_accel"]:
             label = cli.accelerator_label(status["shortcut_accel"])
             self._shortcut_row.set_subtitle(f"Bound: {label}")
             self._shortcut_icon.set_from_icon_name("emblem-ok-symbolic")
-        else:
+        elif status["shortcut_fixable"]:
             default_label = cli.accelerator_label(cli.DEFAULT_SHORTCUT_BINDING)
             self._shortcut_row.set_subtitle(
                 f"Not bound yet — Finish setup will bind {default_label}")
             self._shortcut_icon.set_from_icon_name("dialog-warning-symbolic")
+        else:
+            self._shortcut_row.set_subtitle(
+                "Unavailable in the snap — GNOME's keyboard settings "
+                "aren't reachable from inside confinement. Bind it in "
+                "Settings ▸ Keyboard, or use the .deb.")
+            self._shortcut_icon.set_from_icon_name(
+                "dialog-information-symbolic")
 
         show_deb_hint = status["snap"] and not status["nautilus"]
         self._setup_deb_row.set_visible(show_deb_hint)
         self._setup_deb_box.set_visible(show_deb_hint)
+        # Nothing to press when nothing here is actually fixable.
+        self._setup_button.set_visible(status["anything_fixable"])
         self.setup_group.set_visible(not status["complete"])
 
     def _on_finish_setup_clicked(self, _button: Gtk.Button) -> None:
@@ -305,7 +343,15 @@ class NearShareWindow(Adw.ApplicationWindow):
             if exc is not None:
                 self.toast(f"Setup couldn't finish: {exc}")
             else:
-                self.toast("Setup finished")
+                # Report what actually changed. Claiming success while
+                # rows still show warnings is how this looked broken.
+                after_status = cli.integration_status()
+                if after_status["complete"]:
+                    self.toast("Setup finished")
+                elif after_status["anything_fixable"]:
+                    self.toast("Setup partly finished — see remaining items")
+                else:
+                    self.toast("Done — the rest needs the .deb build")
             self.refresh_setup_status()
 
         self.app.asyncio_thread.run_coroutine(_do(), after)
