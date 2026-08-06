@@ -1,6 +1,6 @@
 name: nearshare
 title: NearShare
-version: '1.0.6'
+version: '1.0.7'
 summary: Share files with nearby Android, Windows, macOS, and Linux devices
 description: |
   NearShare speaks Google's Quick Share / Nearby Share wire protocol
@@ -99,6 +99,18 @@ apps:
   # nearshare` (the GTK app) directly rather than going through
   # nearshare.cli's own "gui" subcommand, so there's one less exec hop
   # and no dependency on argv handling in two different places.
+  send:
+    command: bin/nearshare-send
+    extensions: [gnome]
+    desktop: usr/share/applications/nearshare-send.desktop
+    plugs:
+      - network
+      - network-bind
+      - home
+      - removable-media
+    environment:
+      HOME: $SNAP_REAL_HOME
+
   gui:
     command: bin/nearshare-gui
     extensions: [gnome]
@@ -211,8 +223,19 @@ parts:
       cd "$SNAP/app"
       exec "$SNAP/bin/python3" -m nearshare "$@"
       WRAP
+      # Backs the "Open With -> NearShare (send to phone)" entry. A snap
+      # cannot install a Files extension, but an exported .desktop with
+      # %F puts NearShare in the right-click "Open With" list, which is
+      # the closest equivalent available under strict confinement.
+      cat > "$CRAFT_PART_INSTALL"/bin/nearshare-send <<'WRAP'
+      #!/bin/sh
+      set -e
+      cd "$SNAP/app"
+      exec "$SNAP/bin/python3" -m nearshare.cli send-picker "$@"
+      WRAP
       chmod 755 "$CRAFT_PART_INSTALL"/bin/nearshare-cli \
-                "$CRAFT_PART_INSTALL"/bin/nearshare-gui
+                "$CRAFT_PART_INSTALL"/bin/nearshare-gui \
+                "$CRAFT_PART_INSTALL"/bin/nearshare-send
 
   desktop-files:
     plugin: dump
@@ -220,6 +243,7 @@ parts:
     organize:
       icons/dev.dhivalabs.nearshare.svg: usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.nearshare.svg
       dev.dhivalabs.nearshare.desktop: usr/share/applications/dev.dhivalabs.nearshare.desktop
+      nearshare-send.desktop: usr/share/applications/nearshare-send.desktop
     # Only the main app launcher ships: nearshare-send.desktop (Nautilus
     # %F argument passing) and nearshare-toggle.desktop (meant to be
     # targeted by an absolute-path gsettings custom keybinding, per
@@ -230,6 +254,7 @@ parts:
     stage:
       - usr/share/icons/hicolor/scalable/apps/dev.dhivalabs.nearshare.svg
       - usr/share/applications/dev.dhivalabs.nearshare.desktop
+      - usr/share/applications/nearshare-send.desktop
     override-build: |
       # The dump plugin populates the install dir with hard links, which
       # fails outright if an earlier interrupted build left files there.
@@ -256,3 +281,7 @@ parts:
       # place before staging.
       sed -i 's/^Exec=nearshare gui$/Exec=nearshare/' \
         "$CRAFT_PART_INSTALL"/dev.dhivalabs.nearshare.desktop
+      # Same rewrite for the send entry: snapd replaces the first token
+      # with /snap/bin/nearshare.send and keeps %F as a literal arg.
+      sed -i 's/^Exec=nearshare send-picker %F$/Exec=nearshare %F/' \
+        "$CRAFT_PART_INSTALL"/nearshare-send.desktop

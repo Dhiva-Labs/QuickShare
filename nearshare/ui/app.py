@@ -30,7 +30,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .. import cli  # noqa: E402
 from ..core.connection import Events, TransferRequest  # noqa: E402
@@ -101,11 +101,24 @@ class _TransferRow:
         # Long error messages must stay fully readable rather than being
         # ellipsized to one line (see mark_error).
         self.row.set_subtitle_lines(0)
+        # A long device name must ellipsize rather than push the suffix
+        # widgets past the right edge -- that overlap is what made the
+        # window unusable at its default width.
+        self.row.set_title_lines(1)
         self.status_icon = Gtk.Image.new_from_icon_name(
             "emblem-synchronizing-symbolic")
         self.row.add_prefix(self.status_icon)
-        self.progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER)
-        self.progress.set_size_request(120, -1)
+        # Narrow, and allowed to shrink: at 360px there is no room for a
+        # 120px bar beside text and two buttons. The subtitle always
+        # carries the percentage, so hiding the bar loses nothing.
+        # halign=CENTER as well as hexpand=False: inside an ActionRow's
+        # suffix box a FILL-aligned bar stretches to whatever space is
+        # left (measured at 150px in a 360px window), squeezing the title
+        # and buttons into each other.
+        self.progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER,
+                                        halign=Gtk.Align.CENTER,
+                                        hexpand=False,
+                                        css_classes=["transfer-progress"])
         self.row.add_suffix(self.progress)
         self.open_button = Gtk.Button(
             icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER,
@@ -176,6 +189,24 @@ class _TransferRow:
         self._group.remove(self.row)
 
 
+# Gtk.ProgressBar's default trough carries a ~150px CSS min-width, and
+# set_size_request only raises a floor -- it cannot bring that down. In a
+# 360px window a 150px bar beside a device name and two buttons is what
+# made rows overlap, so cap it in CSS instead.
+_CSS = b"""
+progressbar.transfer-progress > trough { min-width: 64px; }
+"""
+
+
+def _install_css() -> None:
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_CSS)
+    display = Gdk.Display.get_default()
+    if display is not None:
+        Gtk.StyleContext.add_provider_for_display(
+            display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
 def _open_folder(folder: Path) -> None:
     uri = GLib.filename_to_uri(str(folder), None)
     Gio.AppInfo.launch_default_for_uri(uri, None)
@@ -188,7 +219,8 @@ class NearShareWindow(Adw.ApplicationWindow):
 
     def __init__(self, application: "NearShareApplication") -> None:
         super().__init__(application=application, title="NearShare",
-                         default_width=480, default_height=640)
+                         default_width=480, default_height=640,
+                         width_request=360, height_request=440)
         self.app = application
         self._peer_rows: dict[str, Adw.ActionRow] = {}
         self._peers: dict[str, Peer] = {}
@@ -204,6 +236,8 @@ class NearShareWindow(Adw.ApplicationWindow):
         # name, not a direction) are matched back to a key.
         self._active: dict[tuple[str, str], _TransferRow] = {}
         self._completed: list[_TransferRow] = []
+        # Set by the responsive breakpoint; new rows inherit it.
+        self._compact = False
         self._updating_visibility_switch = False
         self._updating_hotspot_switch = False
         # Only nag once per process run that closing the window doesn't
@@ -219,6 +253,21 @@ class NearShareWindow(Adw.ApplicationWindow):
 
     def _build_ui(self) -> None:
         toolbar_view = Adw.ToolbarView()
+        # Below ~420px there is no room for a progress bar beside a
+        # device name and two buttons, so drop the bars at that width;
+        # every row's subtitle still carries the percentage. Wrapped in
+        # a try/except because add_breakpoint needs libadwaita >= 1.4 and
+        # a missing breakpoint must not stop the window from building.
+        try:
+            breakpoint_ = Adw.Breakpoint.new(
+                Adw.BreakpointCondition.parse("max-width: 420sp"))
+            breakpoint_.connect(
+                "apply", lambda _b: self._set_compact(True))
+            breakpoint_.connect(
+                "unapply", lambda _b: self._set_compact(False))
+            self.add_breakpoint(breakpoint_)
+        except (AttributeError, TypeError) as exc:  # older libadwaita
+            log.debug("responsive breakpoint unavailable: %s", exc)
         self.set_content(toolbar_view)
 
         self.window_title = Adw.WindowTitle(
@@ -638,8 +687,24 @@ class NearShareWindow(Adw.ApplicationWindow):
             f"{_DEVICE_TYPE_NAMES.get(peer.device_type, 'Device')} "
             f"• {peer.host}")
 
+    def _set_compact(self, compact: bool) -> None:
+        """Narrow-window layout: hide per-row progress bars.
+
+        Driven by the window's Adw.Breakpoint. Applies to rows that
+        already exist and is remembered for rows created later.
+        """
+        self._compact = compact
+        for row in list(self._active.values()) + list(self._completed):
+            if not row.finished:
+                row.progress.set_visible(not compact)
+
     def _add_peer_row(self, key: str, peer: Peer) -> Adw.ActionRow:
         row = Adw.ActionRow()
+        # Device names and the "IP • type" subtitle are arbitrarily long;
+        # without a line cap they push the Send button off the row at
+        # narrow widths instead of ellipsizing.
+        row.set_title_lines(1)
+        row.set_subtitle_lines(1)
         self._update_peer_row(row, peer)
         button = Gtk.Button(label="Send files…", valign=Gtk.Align.CENTER,
                             css_classes=["suggested-action"])
@@ -709,6 +774,8 @@ class NearShareWindow(Adw.ApplicationWindow):
             self._update_empty_transfers_visibility()
 
         row = _TransferRow(self.transfers_group, title, total, on_remove)
+        if self._compact:
+            row.progress.set_visible(False)
         self._active[key] = row
         return row
 
@@ -976,6 +1043,7 @@ class NearShareApplication(Adw.Application):
         # Icon association on GNOME/Wayland comes from the .desktop file
         # matching APP_ID; the explicit default covers X11 and non-GNOME.
         Gtk.Window.set_default_icon_name(APP_ID)
+        _install_css()
         if self.window is None:
             self.window = NearShareWindow(self)
         self.window.present()

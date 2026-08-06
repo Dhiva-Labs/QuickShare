@@ -1,3 +1,9 @@
+nearshare (1.0.7~noble1) noble; urgency=medium
+
+  * Fix row overlap in narrow windows; add Open With entry for the snap.
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 15:13:43 +0530
+
 nearshare (1.0.6~noble1) noble; urgency=medium
 
   * install/uninstall are layout-aware: package installs only bind the
