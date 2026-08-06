@@ -4,13 +4,14 @@
 # control directories, backup/swap files, Libtool output) -- without it,
 # "3.0 (native)" happily packs the entire .git/ history into the tarball.
 # .venv/ is the developer's own virtualenv (can be gigabytes with
-# pip-installed wheels); __pycache__/ and *.pyc are stale bytecode;
-# nearshare/proto/*_pb2.py are the generated protobuf bindings that
-# debian/rules regenerates at build time (see the comment in debian/rules
-# override_dh_auto_build for why they must not be the ones shipped in the
-# tarball).
+# pip-installed wheels); __pycache__/ and *.pyc are stale bytecode.
+#
+# nearshare/proto/*_pb2.py ARE shipped: generate them with the target
+# distribution's own protoc (tools/genproto.sh python3, with
+# python3-grpc-tools installed) so they match the python3-protobuf this
+# package depends on. Regenerating them on the buildd instead made the
+# build depend on grpc_tools being importable there, which it was not.
 tar-ignore
 tar-ignore = ".venv"
 tar-ignore = "__pycache__"
 tar-ignore = "*.pyc"
-tar-ignore = "nearshare/proto/*_pb2.py"

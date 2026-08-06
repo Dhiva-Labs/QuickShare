@@ -26,14 +26,22 @@
 # code always matches the protobuf runtime this same build will Depend on.
 override_dh_auto_build:
 	dh_auto_build
-	@python3 -c 'import grpc_tools.protoc' >/dev/null 2>&1 || { \
-		echo 'error: grpc_tools.protoc is not importable by python3.' >&2; \
-		echo '       Install the build dependency and retry:' >&2; \
-		echo '           sudo apt install python3-grpc-tools' >&2; \
-		exit 1; \
-	}
-	rm -f nearshare/proto/*_pb2.py
-	tools/genproto.sh python3
+	# The protobuf bindings ship pre-generated in the source package,
+	# built with the target distribution's own protoc so they match the
+	# python3-protobuf this package Depends on. Only regenerate when
+	# they are genuinely absent (e.g. building straight from a git
+	# checkout, where they are gitignored); a buildd never takes this
+	# branch, which is deliberate -- grpc_tools is not reliably
+	# importable there.
+	if [ ! -f nearshare/proto/offline_wire_formats_pb2.py ]; then \
+		python3 -c 'import grpc_tools.protoc' || { \
+			echo 'error: protobuf bindings are missing and' >&2; \
+			echo '       grpc_tools.protoc is not importable.' >&2; \
+			echo '       Run: sudo apt install python3-grpc-tools' >&2; \
+			exit 1; \
+		}; \
+			bash tools/genproto.sh python3; \
+	fi
 
 override_dh_auto_test:
 	# tests/test_loopback.py and tests/test_cli.py drive a real
@@ -76,5 +84,7 @@ override_dh_auto_install:
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f nearshare/proto/*_pb2.py
+	# NB: the generated *_pb2.py are NOT removed here. They ship in the
+	# source package (see debian/source/options); deleting them on clean
+	# would force a regeneration the buildd cannot perform.
 	find . -name '__pycache__' -prune -exec rm -rf {} +

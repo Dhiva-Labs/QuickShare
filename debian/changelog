@@ -1,3 +1,10 @@
+nearshare (1.0.4~noble1) noble; urgency=medium
+
+  * Ship pre-generated protobuf bindings so the buildd does not need
+    grpc_tools.
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 12:56:10 +0530
+
 nearshare (1.0.3~noble1) noble; urgency=medium
 
   * Prevent duplicate instances; bind Ctrl+Alt+N shortcut; system-wide
