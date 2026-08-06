@@ -21,6 +21,7 @@ import mimetypes
 import os
 import random
 import re
+import shutil
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,6 +36,16 @@ log = logging.getLogger("nearshare.connection")
 CHUNK_SIZE = 512 * 1024
 KEEP_ALIVE_INTERVAL = 10.0
 KEEP_ALIVE_TIMEOUT = 30.0
+
+# Sharing-layer control frames (Introduction, PairedKey*, text shares,
+# progress/cancel control) are all small by construction; the only ones
+# that legitimately run to any size are text shares, still nowhere near
+# this. Without a cap a peer that never sets LAST_CHUNK turns
+# _recv_sharing_frame's / _receive_payloads' accumulation buffers into
+# an unbounded memory-exhaustion primitive (each individual frame is
+# already capped at 100 MiB by read_frame, but nothing stopped an
+# unlimited *number* of them piling into the same buffer).
+MAX_SHARING_FRAME_SIZE = 64 * 1024 * 1024
 
 
 # ---------------------------------------------------------------- framing
@@ -79,6 +90,23 @@ def random_endpoint_id() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
 
 
+def enough_free_space(download_dir: Path, total_size: int) -> bool:
+    """False if total_size (sum of peer-declared file sizes, entirely
+    attacker-controlled) would not fit in download_dir's free space.
+
+    Best-effort: if we can't even stat the filesystem, don't block what
+    might be a perfectly legitimate transfer over it.
+    """
+    if total_size <= 0:
+        return True
+    try:
+        download_dir.mkdir(parents=True, exist_ok=True)
+        free = shutil.disk_usage(download_dir).free
+    except OSError:
+        return True
+    return total_size <= free
+
+
 def build_endpoint_info(device_name: str, device_type: int = 3) -> bytes:
     """Endpoint info blob: flags byte (device type in bits 1-3), 16 random
     bytes, then length-prefixed UTF-8 device name. device_type 3 = laptop."""
@@ -94,9 +122,18 @@ def parse_endpoint_info(info: bytes) -> tuple[str, int]:
         n = info[17]
         raw = info[18:18 + n]
         try:
-            name = raw.decode("utf-8")
+            decoded = raw.decode("utf-8")
         except UnicodeDecodeError:
-            pass
+            decoded = None
+        if decoded:
+            # This name is attacker-controlled and flows straight into
+            # terminal output (cli.py) and the names.py cache with no
+            # further sanitisation downstream. Strip control characters
+            # here at the source so a peer can't smuggle ANSI/terminal
+            # escape sequences or embedded newlines into either.
+            cleaned = _UNSAFE_FILENAME_CHARS.sub("", decoded).strip()
+            if cleaned:
+                name = cleaned
     return name, device_type
 
 
@@ -232,6 +269,12 @@ class _ConnectionBase:
             if pt.payload_header.type != ow.PayloadTransferFrame.PayloadHeader.BYTES:
                 continue
             buf = buffers.setdefault(pt.payload_header.id, bytearray())
+            if len(buf) + len(pt.payload_chunk.body) > MAX_SHARING_FRAME_SIZE:
+                # A well-behaved peer never sends a control/introduction
+                # frame anywhere near this size; a peer that just keeps
+                # sending DATA chunks without LAST_CHUNK is trying to
+                # grow this buffer without bound.
+                raise HandshakeError("sharing-layer payload too large")
             buf.extend(pt.payload_chunk.body)
             if pt.payload_chunk.flags & ow.PayloadTransferFrame.PayloadChunk.LAST_CHUNK:
                 sharing = wf.Frame()
@@ -356,10 +399,16 @@ class InboundConnection(_ConnectionBase):
 
         # Sanitise at the edge: the name is shown in the accept dialog and
         # used for the destination, so the user must be shown exactly the
-        # name that will be written, never a crafted path.
+        # name that will be written, never a crafted path. Sizes are
+        # peer-declared too; clamp negatives to 0 so a crafted negative
+        # size can't be used to offset a huge one elsewhere in the same
+        # Introduction and slip an oversized transfer past the disk-space
+        # check below (each file's writes are separately capped at its
+        # own clamped size regardless, but the aggregate check should not
+        # be foolable either).
         offers = [FileOffer(payload_id=fm.payload_id,
                             name=safe_filename(fm.name),
-                            size=fm.size, mime_type=fm.mime_type)
+                            size=max(fm.size, 0), mime_type=fm.mime_type)
                   for fm in intro.v1.introduction.file_metadata]
         texts = list(intro.v1.introduction.text_metadata)
         # Only payload ids declared as text in the introduction are text
@@ -373,16 +422,26 @@ class InboundConnection(_ConnectionBase):
             text_preview=texts[0].text_title if texts else None,
         )
 
-        # The sender's phone shows a spinner while we decide; give the
-        # human 60s before declining, so the peer isn't left hanging
-        # forever if the dialog goes unnoticed.
-        accepted = False
-        if self.events.on_transfer_request:
-            try:
-                accepted = await asyncio.wait_for(
-                    self.events.on_transfer_request(request), timeout=60)
-            except asyncio.TimeoutError:
-                accepted = False
+        # A hostile peer can declare any total size it likes (there is no
+        # upper bound in the protocol); a petabyte claim would otherwise
+        # only be caught once the disk actually filled up mid-transfer.
+        # Refuse before ever bothering the human with an accept dialog.
+        if not enough_free_space(self.download_dir, request.total_size):
+            log.warning("declined transfer from %s: declared size %d "
+                       "exceeds free space", self.peer_name,
+                       request.total_size)
+            accepted = False
+        else:
+            # The sender's phone shows a spinner while we decide; give the
+            # human 60s before declining, so the peer isn't left hanging
+            # forever if the dialog goes unnoticed.
+            accepted = False
+            if self.events.on_transfer_request:
+                try:
+                    accepted = await asyncio.wait_for(
+                        self.events.on_transfer_request(request), timeout=60)
+                except asyncio.TimeoutError:
+                    accepted = False
 
         resp = wf.Frame()
         resp.version = wf.Frame.V1
@@ -444,6 +503,20 @@ class InboundConnection(_ConnectionBase):
                     if offer.handle is None:
                         self._open_dest(offer)
                     if chunk.body:
+                        # offset and declared size are both peer-controlled.
+                        # A huge offset with a tiny body is a sparse-file
+                        # attack (a few bytes on the wire, an
+                        # apparently-huge file on disk); writing past the
+                        # size the human was actually shown in the accept
+                        # dialog is the same disk-exhaustion primitive the
+                        # up-front free-space check exists to stop, just
+                        # arriving one payload at a time instead of via an
+                        # inflated total. Refuse either.
+                        end = chunk.offset + len(chunk.body)
+                        if chunk.offset < 0 or end > offer.size:
+                            raise HandshakeError(
+                                f"payload {header.id}: chunk [{chunk.offset}:"
+                                f"{end}) exceeds declared size {offer.size}")
                         # Chunks arrive in order per payload, but guard
                         # against retransmits by writing at the offset.
                         if chunk.offset != offer.received:
@@ -461,6 +534,9 @@ class InboundConnection(_ConnectionBase):
                         pending_files.discard(header.id)
                 elif header.type == ow.PayloadTransferFrame.PayloadHeader.BYTES:
                     buf = byte_buffers.setdefault(header.id, bytearray())
+                    if len(buf) + len(chunk.body) > MAX_SHARING_FRAME_SIZE:
+                        raise HandshakeError(
+                            f"payload {header.id}: BYTES payload too large")
                     buf.extend(chunk.body)
                     if not is_last:
                         continue

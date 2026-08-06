@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -36,6 +37,7 @@ from ..core.connection import Events, TransferRequest  # noqa: E402
 from ..core.hotspot import Hotspot, HotspotError  # noqa: E402
 from ..core.mdns import Peer  # noqa: E402
 from ..core.service import NearShareService  # noqa: E402
+from . import prefs  # noqa: E402
 from .asyncio_glue import AsyncioThread, bridge_future_to_asyncio, idle  # noqa: E402
 from .qrcode import QrCodeArea, wifi_qr_payload  # noqa: E402
 
@@ -68,6 +70,21 @@ def _human_size(n: int) -> str:
     return f"{size:.1f} TB"
 
 
+def _human_speed(bytes_per_second: float) -> str:
+    return f"{_human_size(int(bytes_per_second))}/s"
+
+
+def _human_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    if total < 60:
+        return f"{total}s"
+    minutes, secs = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
 class _TransferRow:
     """One row in the Transfers section, tracking a single (device,
     direction) session -- see NearShareWindow._active / _completed for
@@ -78,8 +95,15 @@ class _TransferRow:
         self.total = total
         self.done = 0
         self.finished = False
+        self.started_at = time.monotonic()
 
         self.row = Adw.ActionRow(title=title)
+        # Long error messages must stay fully readable rather than being
+        # ellipsized to one line (see mark_error).
+        self.row.set_subtitle_lines(0)
+        self.status_icon = Gtk.Image.new_from_icon_name(
+            "emblem-synchronizing-symbolic")
+        self.row.add_prefix(self.status_icon)
         self.progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER)
         self.progress.set_size_request(120, -1)
         self.row.add_suffix(self.progress)
@@ -89,7 +113,7 @@ class _TransferRow:
         self.row.add_suffix(self.open_button)
         self.remove_button = Gtk.Button(
             icon_name="window-close-symbolic", valign=Gtk.Align.CENTER,
-            tooltip_text="Remove", css_classes=["flat"])
+            tooltip_text="Remove from this list", css_classes=["flat"])
         self.remove_button.connect("clicked", lambda _b: on_remove(self))
         self.row.add_suffix(self.remove_button)
         group.add(self.row)
@@ -100,8 +124,19 @@ class _TransferRow:
         if self.finished:
             return
         pct = int(self.done * 100 / self.total) if self.total else 0
-        self.row.set_subtitle(
-            f"{_human_size(self.done)} / {_human_size(self.total)} ({pct}%)")
+        parts = [f"{_human_size(self.done)} / {_human_size(self.total)} ({pct}%)"]
+        # Speed/ETA are cheap derivatives of the progress callbacks
+        # (done/total over wall-clock elapsed since this row started) --
+        # no core changes needed. Held back for the first half second so
+        # a burst of early callbacks doesn't show a wildly wrong rate.
+        elapsed = time.monotonic() - self.started_at
+        if elapsed > 0.5 and self.done > 0:
+            speed = self.done / elapsed
+            parts.append(_human_speed(speed))
+            if self.total > self.done and speed > 0:
+                eta = (self.total - self.done) / speed
+                parts.append(f"{_human_duration(eta)} left")
+        self.row.set_subtitle(" • ".join(parts))
 
     def update_progress(self, done: int, total: int) -> None:
         if self.finished:
@@ -114,17 +149,28 @@ class _TransferRow:
     def mark_complete(self, folder: Path | None, count: int) -> None:
         self.finished = True
         self.progress.set_fraction(1.0)
+        self.progress.set_visible(False)
+        self.status_icon.set_from_icon_name("emblem-ok-symbolic")
+        self.status_icon.add_css_class("success")
+        # Dim the whole row so a glance at the list separates "still
+        # going" from "done" without reading the text.
+        self.row.add_css_class("dim-label")
         plural = "file" if count == 1 else "files"
-        self.row.set_subtitle(f"Completed • {count} {plural}")
+        elapsed = _human_duration(time.monotonic() - self.started_at)
+        self.row.set_subtitle(f"Completed • {count} {plural} • {elapsed}")
         if folder is not None:
             self.open_button.set_visible(True)
+            self.open_button.set_tooltip_text(f"Open {folder}")
             self.open_button.connect(
                 "clicked", lambda _b: _open_folder(folder))
 
     def mark_error(self, message: str) -> None:
         self.finished = True
-        self.row.set_subtitle(f"Failed: {message}")
+        self.progress.set_visible(False)
+        self.status_icon.set_from_icon_name("dialog-error-symbolic")
         self.row.add_css_class("error")
+        self.row.set_subtitle(f"Failed: {message}")
+        self.row.set_tooltip_text(message)
 
     def remove(self) -> None:
         self._group.remove(self.row)
@@ -160,6 +206,11 @@ class NearShareWindow(Adw.ApplicationWindow):
         self._completed: list[_TransferRow] = []
         self._updating_visibility_switch = False
         self._updating_hotspot_switch = False
+        # Only nag once per process run that closing the window doesn't
+        # quit the app -- the first-ever close already explains this at
+        # length (see _show_background_explainer); repeating a dialog
+        # every time would be the annoying kind of "helpful".
+        self._background_notice_sent = False
 
         self.connect("close-request", self._on_close_request)
         self._build_ui()
@@ -175,9 +226,10 @@ class NearShareWindow(Adw.ApplicationWindow):
         header = Adw.HeaderBar(title_widget=self.window_title)
 
         menu = Gio.Menu()
-        menu.append("Quit", "app.quit")
+        menu.append("Quit NearShare", "app.quit")
         menu_button = Gtk.MenuButton(
-            icon_name="open-menu-symbolic", menu_model=menu)
+            icon_name="open-menu-symbolic", menu_model=menu,
+            tooltip_text="Main Menu")
         header.pack_end(menu_button)
         toolbar_view.add_top_bar(header)
 
@@ -361,9 +413,24 @@ class NearShareWindow(Adw.ApplicationWindow):
         self.visibility_row = Adw.SwitchRow(
             title="Visible to nearby devices",
             subtitle=self.app.service.device_name)
+        self.visibility_row.set_tooltip_text(
+            "When on, nearby phones and laptops with Quick Share open "
+            "can see this device and send you files. You can always "
+            "send to others, visible or not.")
         self.visibility_row.connect(
             "notify::active", self._on_visibility_switch_toggled)
         group.add(self.visibility_row)
+
+        # Health of our own BLE trigger-advertising, surfaced right next
+        # to the switch it affects instead of as a separate banner
+        # elsewhere in the window -- see update_ble_status. Hidden
+        # unless service.ble_status actually degrades.
+        self._ble_health_row = Adw.ActionRow(
+            title="Bluetooth discovery unavailable",
+            selectable=False, visible=False)
+        self._ble_health_row.add_prefix(
+            Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+        group.add(self._ble_health_row)
         return group
 
     def _build_devices_group(self) -> Adw.PreferencesGroup:
@@ -371,34 +438,65 @@ class NearShareWindow(Adw.ApplicationWindow):
             title="Nearby devices",
             description="Devices with Quick Share receiving open on the "
                         "same network.")
-        # Subtle info row, shown only when BLE trigger advertising isn't
-        # available (see NearShareApplication's post-start ble_status
-        # query) -- without it, phones fall back to mDNS-only discovery,
-        # which only works while their own Quick Share screen is open.
-        self._ble_banner_row = Adw.ActionRow(
-            title="Bluetooth discovery unavailable",
-            subtitle="Open Quick Share on the phone to see this device.",
-            selectable=False, sensitive=False, visible=False)
-        self._ble_banner_row.add_prefix(
-            Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
-        self.devices_group.add(self._ble_banner_row)
-        self._empty_devices_row = Adw.ActionRow(
-            title="No nearby devices yet",
-            subtitle="Open Quick Share (or the share sheet) on your "
-                    "phone so it becomes discoverable.",
-            selectable=False, sensitive=False)
-        self.devices_group.add(self._empty_devices_row)
+
+        # Discovery has no "I've started looking and found nothing yet"
+        # event (mdns.Browser only calls back on an actual change), so
+        # the searching/empty distinction is time-based: assume we're
+        # still warming up until either a peer shows up or a few seconds
+        # pass with none -- see _on_discovery_settle_timeout.
+        self._devices_settled = False
+        self._searching_status = Adw.StatusPage(
+            title="Searching for Nearby Devices…",
+            description="This can take a few seconds.",
+            css_classes=["compact"])
+        spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER)
+        spinner.set_size_request(32, 32)
+        self._searching_status.set_child(spinner)
+        self.devices_group.add(self._searching_status)
+
+        self._empty_devices_status = Adw.StatusPage(
+            icon_name="phone-symbolic",
+            title="No Nearby Devices Yet",
+            description="Open Quick Share (or the share sheet) on your "
+                        "phone so it becomes discoverable.",
+            css_classes=["compact"], visible=False)
+        self.devices_group.add(self._empty_devices_status)
+
+        GLib.timeout_add_seconds(5, self._on_discovery_settle_timeout)
         return self.devices_group
+
+    def _on_discovery_settle_timeout(self) -> bool:
+        if not self._devices_settled:
+            self._devices_settled = True
+            self._update_devices_empty_state()
+        return GLib.SOURCE_REMOVE  # one-shot
+
+    def _update_devices_empty_state(self) -> None:
+        has_peers = bool(self._peers)
+        self._searching_status.set_visible(
+            not has_peers and not self._devices_settled)
+        self._empty_devices_status.set_visible(
+            not has_peers and self._devices_settled)
 
     def _build_transfers_group(self) -> Adw.PreferencesGroup:
         self.transfers_group = Adw.PreferencesGroup(title="Transfers")
-        self._empty_transfers_row = Adw.ActionRow(
-            title="No transfers yet", selectable=False, sensitive=False)
-        self.transfers_group.add(self._empty_transfers_row)
+        self._empty_transfers_status = Adw.StatusPage(
+            icon_name="send-to-symbolic",
+            title="No Transfers Yet",
+            description="Files you send or receive will show up here.",
+            css_classes=["compact"])
+        self.transfers_group.add(self._empty_transfers_status)
         return self.transfers_group
 
     def update_ble_status(self, ble_status: str) -> None:
-        self._ble_banner_row.set_visible(ble_status.startswith("unavailable"))
+        degraded = ble_status.startswith("unavailable")
+        self._ble_health_row.set_visible(degraded)
+        if degraded:
+            reason = (ble_status.split(":", 1)[1].strip()
+                      if ":" in ble_status else ble_status)
+            self._ble_health_row.set_subtitle(
+                f"{reason} — phones may need Quick Share open on their "
+                "screen to see this device.")
 
     def _build_direct_mode_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Experimental")
@@ -446,8 +544,54 @@ class NearShareWindow(Adw.ApplicationWindow):
     # ---------------------------------------------------------- lifecycle
 
     def _on_close_request(self, _window: Adw.ApplicationWindow) -> bool:
-        self.hide()
+        if not prefs.has_seen_background_explainer():
+            self._show_background_explainer()
+        else:
+            self._hide_to_background()
         return True  # keep the window (and app.hold()) alive, don't destroy
+
+    def _show_background_explainer(self) -> None:
+        """First-ever close: explain that NearShare keeps running so it
+        can keep receiving, and give an explicit way out, before ever
+        hiding the window. Remembered via prefs so this shows exactly
+        once regardless of which button the user picks."""
+        dialog = Adw.AlertDialog.new(
+            "NearShare Keeps Running in the Background",
+            "Closing this window doesn't quit NearShare — it keeps "
+            "running so nearby devices can still send you files. "
+            "You can quit any time from the menu (≡) in the top "
+            "corner.")
+        dialog.add_response("keep-running", "Keep Running")
+        dialog.add_response("quit", "Quit Now")
+        dialog.set_response_appearance(
+            "quit", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("keep-running")
+        dialog.set_close_response("keep-running")
+
+        def on_response(source: Adw.AlertDialog, result: Gio.AsyncResult) -> None:
+            response = source.choose_finish(result)
+            prefs.mark_background_explainer_seen()
+            if response == "quit":
+                self.app.quit()
+            else:
+                self._hide_to_background()
+
+        dialog.choose(self, None, on_response)
+
+    def _hide_to_background(self) -> None:
+        self.hide()
+        if self._background_notice_sent:
+            return
+        self._background_notice_sent = True
+        # No system tray on GNOME, so a low-priority desktop notification
+        # is the only affordance that survives the window disappearing --
+        # shown once per run, not on every close.
+        notification = Gio.Notification.new("NearShare is still running")
+        notification.set_body(
+            "It's in the background so nearby devices can send you "
+            "files. Reopen NearShare and use the menu to quit.")
+        notification.set_priority(Gio.NotificationPriority.LOW)
+        self.app.send_notification("background-reminder", notification)
 
     # --------------------------------------------------------- visibility
 
@@ -457,9 +601,11 @@ class NearShareWindow(Adw.ApplicationWindow):
             self.visibility_row.set_active(visible)
         finally:
             self._updating_visibility_switch = False
-        subtitle = self.app.service.device_name
+        name = self.app.service.device_name
         if visible:
-            subtitle += " • Waiting for nearby senders…"
+            subtitle = f"Visible as {name} — nearby devices can send you files"
+        else:
+            subtitle = "Hidden — you can still send to nearby devices"
         self.visibility_row.set_subtitle(subtitle)
 
     def _on_visibility_switch_toggled(self, row: Adw.SwitchRow, _pspec) -> None:
@@ -480,7 +626,11 @@ class NearShareWindow(Adw.ApplicationWindow):
                 self._update_peer_row(self._peer_rows[key], peer)
             else:
                 self._peer_rows[key] = self._add_peer_row(key, peer)
-        self._empty_devices_row.set_visible(not peers)
+        # Any callback at all -- even one that empties the list again --
+        # proves discovery is up and running, so drop the "might still
+        # be warming up" spinner state for good.
+        self._devices_settled = True
+        self._update_devices_empty_state()
 
     def _update_peer_row(self, row: Adw.ActionRow, peer: Peer) -> None:
         row.set_title(peer.device_name)
@@ -546,7 +696,7 @@ class NearShareWindow(Adw.ApplicationWindow):
                         total: int) -> _TransferRow:
         """Create (replacing any stale row already at `key`) the active
         row for a freshly-started session and register it."""
-        self._empty_transfers_row.set_visible(False)
+        self._empty_transfers_status.set_visible(False)
         old = self._active.pop(key, None)
         if old is not None:
             old.remove()
@@ -571,7 +721,7 @@ class NearShareWindow(Adw.ApplicationWindow):
         self._update_empty_transfers_visibility()
 
     def _update_empty_transfers_visibility(self) -> None:
-        self._empty_transfers_row.set_visible(
+        self._empty_transfers_status.set_visible(
             not self._active and not self._completed)
 
     def _find_active_row(

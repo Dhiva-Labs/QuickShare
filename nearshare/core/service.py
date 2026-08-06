@@ -29,6 +29,11 @@ from .mdns import Advertiser, Browser, Peer
 
 log = logging.getLogger("nearshare.service")
 
+# Concurrent inbound connections allowed before new ones are refused.
+# One sender at a time is the norm; the headroom covers a retrying phone
+# overlapping with a finishing transfer.
+MAX_CONCURRENT_INBOUND = 8
+
 
 def control_socket_path() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
@@ -92,6 +97,7 @@ class NearShareService:
         self.ble_status = "off"  # "on", "off", or "unavailable: <why>"
         self._ble_scanner = BleScanner(on_activity=self._ble_activity_seen)
         self.ble_scan_status = "off"
+        self._inbound_count = 0
         self.last_ble_activity: float = 0.0
         self._ble_notified_at: float = 0.0
         self.on_ble_activity: Callable[[], None] | None = None
@@ -206,9 +212,29 @@ class NearShareService:
 
     async def _handle_inbound(self, reader: asyncio.StreamReader,
                               writer: asyncio.StreamWriter) -> None:
-        conn = InboundConnection(reader, writer, self.events,
-                                 self.device_name, self.download_dir)
-        await conn.run()
+        # Cap concurrent inbound connections. Legitimate use is one
+        # sender at a time (occasionally two); without a cap anyone on
+        # the LAN can open sockets until the process runs out of file
+        # descriptors, and each one costs a task, buffers and a
+        # keep-alive timer. Refuse politely rather than queueing, so a
+        # flood cannot delay a real transfer either.
+        if self._inbound_count >= MAX_CONCURRENT_INBOUND:
+            peer = writer.get_extra_info("peername")
+            log.warning("refusing connection from %s: %d already in "
+                        "progress", peer, self._inbound_count)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            return
+        self._inbound_count += 1
+        try:
+            conn = InboundConnection(reader, writer, self.events,
+                                     self.device_name, self.download_dir)
+            await conn.run()
+        finally:
+            self._inbound_count -= 1
 
     async def send_files(self, peer: Peer, files: list[Path]) -> None:
         """Send files to a discovered peer. Raises on failure."""
@@ -232,14 +258,32 @@ class NearShareService:
             # Nothing listening: a previous run was killed without
             # cleaning up. Safe to take the stale socket over.
             path.unlink()
-        self._control = await asyncio.start_unix_server(
-            self._handle_control, path=str(path))
+        # bind() creates the socket file with mode 0777 & ~umask, so with
+        # a typical 022 umask it's briefly group/world-accessible before
+        # the chmod below runs. The control socket accepts a "send"
+        # command that can push any file the daemon's user can read to
+        # any LAN peer, so close that window instead of just narrowing it
+        # after the fact.
+        old_umask = os.umask(0o177)
+        try:
+            self._control = await asyncio.start_unix_server(
+                self._handle_control, path=str(path))
+        finally:
+            os.umask(old_umask)
         path.chmod(0o600)
 
     async def _handle_control(self, reader: asyncio.StreamReader,
                               writer: asyncio.StreamWriter) -> None:
         try:
-            line = await reader.readline()
+            try:
+                line = await reader.readline()
+            except ValueError:
+                # No newline within the StreamReader's buffer limit
+                # (64 KiB by default): readline() raises rather than
+                # buffering forever, but that exception would otherwise
+                # escape this connection's task uncaught.
+                writer.write(b'{"error": "line too long"}\n')
+                return
             if not line:
                 return
             try:
@@ -247,9 +291,17 @@ class NearShareService:
             except json.JSONDecodeError:
                 writer.write(b'{"error": "bad json"}\n')
                 return
+            if not isinstance(req, dict):
+                # Valid JSON (e.g. a bare number, string, or list) but not
+                # an object: req.get("cmd") below would otherwise raise
+                # AttributeError and crash this connection's task.
+                writer.write(b'{"error": "request must be a JSON object"}\n')
+                return
             resp = await self._dispatch_control(req)
             writer.write(json.dumps(resp).encode() + b"\n")
             await writer.drain()
+        except (ConnectionError, OSError):
+            pass
         finally:
             writer.close()
 
