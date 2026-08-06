@@ -288,8 +288,15 @@ class PickerWindow(Adw.ApplicationWindow):
 
 class PickerApplication(Adw.Application):
     def __init__(self, files: list[Path]) -> None:
-        super().__init__(application_id="dev.dhivalabs.nearshare.picker",
-                         flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        # NON_UNIQUE, and no application id at all: the picker is a
+        # one-shot dialog launched per invocation (from the file
+        # manager's Open With, or `nearshare send-picker`), so it has no
+        # use for single-instance behaviour. Registering an id also made
+        # it die on startup inside the snap -- AppArmor refuses to let a
+        # confined process own "dev.dhivalabs.nearshare.picker", so
+        # clicking Open With silently did nothing. Owning no name at all
+        # cannot be refused.
+        super().__init__(flags=Gio.ApplicationFlags.NON_UNIQUE)
         self.files = files
         self.asyncio_thread = AsyncioThread()
         self.window: PickerWindow | None = None

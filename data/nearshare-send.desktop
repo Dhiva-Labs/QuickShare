@@ -7,10 +7,10 @@ Icon=dev.dhivalabs.nearshare
 Terminal=false
 Categories=Network;FileTransfer;
 NoDisplay=false
-# Without a MimeType this entry never appears in the file manager's
-# "Open With" list. There is no valid wildcard -- "all/all" is rejected
-# by desktop-file-validate -- so declare the types people actually
-# share, plus application/octet-stream for anything unrecognised.
-# "Open With -> Other Application..." lists the app for every file type
-# regardless.
-MimeType=application/octet-stream;application/pdf;application/zip;application/gzip;application/x-tar;application/x-7z-compressed;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/msword;application/vnd.ms-excel;application/epub+zip;application/json;application/xml;text/plain;text/csv;text/html;text/markdown;image/jpeg;image/png;image/gif;image/webp;image/heif;image/tiff;image/bmp;image/svg+xml;audio/mpeg;audio/ogg;audio/flac;audio/wav;audio/aac;audio/x-m4a;video/mp4;video/x-matroska;video/quicktime;video/webm;video/x-msvideo;
+# Without a MimeType this entry never appears in a file manager's "Open
+# With" list. There is no valid wildcard -- desktop-file-validate
+# rejects the conventional all/all and warns it will become fatal -- so
+# this enumerates what people actually share, with
+# application/octet-stream catching unrecognised binaries. Anything not
+# listed is still reachable through "Open With -> Other Application...".
+MimeType=application/octet-stream;application/pdf;application/zip;application/gzip;application/x-tar;application/x-7z-compressed;application/x-rar;application/x-bzip2;application/x-xz;application/x-iso9660-image;application/vnd.debian.binary-package;application/x-rpm;application/java-archive;application/x-java-keystore;application/x-executable;application/x-sharedlib;application/x-shellscript;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.oasis.opendocument.text;application/vnd.oasis.opendocument.spreadsheet;application/vnd.oasis.opendocument.presentation;application/msword;application/vnd.ms-excel;application/vnd.ms-powerpoint;application/epub+zip;application/json;application/xml;application/rtf;application/x-apple-diskimage;application/vnd.android.package-archive;text/plain;text/csv;text/html;text/markdown;text/x-python;text/x-csrc;text/calendar;text/vcard;text/x-log;image/jpeg;image/png;image/gif;image/webp;image/heif;image/heic;image/tiff;image/bmp;image/svg+xml;image/x-icon;image/avif;audio/mpeg;audio/ogg;audio/flac;audio/wav;audio/aac;audio/x-m4a;audio/opus;audio/midi;video/mp4;video/x-matroska;video/quicktime;video/webm;video/x-msvideo;video/mpeg;video/3gpp;video/x-flv;
