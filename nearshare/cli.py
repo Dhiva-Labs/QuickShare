@@ -53,8 +53,14 @@ NAUTILUS_SCRIPT_NAME = "Send with NearShare"
 def _desktop_file_names() -> list[str]:
     """Every data/*.desktop file, by name -- globbed at call time (not a
     hardcoded list) so a new .desktop file dropped into data/ is picked
-    up by install/uninstall without a code change."""
-    return sorted(p.name for p in DESKTOP_DIR.glob("*.desktop"))
+    up by install/uninstall without a code change. In a package install
+    there is no data/ directory, so fall back to the canonical names the
+    package ships; an empty list here would make every "is it installed"
+    check vacuously true."""
+    names = sorted(p.name for p in DESKTOP_DIR.glob("*.desktop"))
+    return names or ["dev.dhivalabs.nearshare.desktop",
+                     "nearshare-send.desktop",
+                     "nearshare-toggle.desktop"]
 
 
 # ---------------------------------------------------------- control socket
@@ -1005,6 +1011,15 @@ def _fs_step(fn) -> bool:
              "(fix the permissions, or run from an account that owns "
              "that path, and re-run install)")
         return False
+    except OSError as exc:
+        # Anything else filesystem-shaped (missing source assets, a
+        # read-only mount, ...) must degrade to a message too -- an
+        # unhandled [Errno 2] traceback reaching the GUI toast is
+        # exactly the bug this wrapper exists to prevent.
+        path = getattr(exc, "filename", None) or str(exc)
+        print(f"  step failed ({exc.__class__.__name__}): {path} -- "
+              "skipping")
+        return False
 
 
 def _skip(what: str, reason: str) -> None:
@@ -1029,12 +1044,15 @@ def integration_status() -> dict[str, Any]:
     # so which() misses the launcher the user's shell can actually see.
     launcher_on_path = (shutil.which("nearshare") is not None or
                         (snap and Path("/snap/bin/nearshare").exists()))
-    desktop_entries = all((_applications_dir() / name).exists()
-                          for name in _desktop_file_names())
+    # Per-user (~/.local, source-checkout install) or system-wide (.deb)
+    # both count as done -- the .deb ships these under /usr.
+    desktop_entries = all(
+        (_applications_dir() / name).exists() or
+        (_SYSTEM_APPLICATIONS_DIR / name).exists()
+        for name in _desktop_file_names())
     nautilus = ((_nautilus_scripts_dir() / NAUTILUS_SCRIPT_NAME).exists() or
                (_nautilus_extensions_dir() / "nearshare_menu.py").exists() or
-               Path("/usr/share/nautilus-python/extensions/"
-                    "nearshare_menu.py").exists())
+               _SYSTEM_NAUTILUS_EXTENSION.exists())
     shortcut = _shortcut_is_ours()
     shortcut_accel = bound_shortcut_accelerator() if shortcut else None
     # Distinguish "not done" from "cannot be done here". Under snap the
@@ -1085,6 +1103,53 @@ def _install_snap(shortcut: bool, key: str | None) -> int:
     return 0
 
 
+# The .deb installs everything system-wide; only /usr/bin/nearshare is a
+# reliable marker for "this is a package install, not a source checkout".
+_SYSTEM_LAUNCHER = Path("/usr/bin/nearshare")
+_SYSTEM_APPLICATIONS_DIR = Path("/usr/share/applications")
+_SYSTEM_NAUTILUS_EXTENSION = Path(
+    "/usr/share/nautilus-python/extensions/nearshare_menu.py")
+
+
+def _install_layout() -> str:
+    """Which of the three install layouts this process runs from.
+
+    "source"  -- a git/source checkout: bin/ and data/ exist next to the
+                 package, and install copies them into ~/.local.
+    "system"  -- the .deb: the launcher, desktop entries, icon and the
+                 Nautilus extension were installed by the package into
+                 /usr; there is nothing to copy (and PROJECT_ROOT has no
+                 bin/ or data/, which is exactly why running the
+                 source-checkout steps here dies with [Errno 2]).
+    "snap"    -- strict confinement; see _install_snap.
+    """
+    if _in_snap():
+        return "snap"
+    if BIN_SCRIPT.exists() and DESKTOP_DIR.exists():
+        return "source"
+    if _SYSTEM_LAUNCHER.exists():
+        return "system"
+    return "source"  # unknown -> attempt the full path, _fs_step catches
+
+
+def _install_system(shortcut: bool, key: str | None) -> int:
+    print("Installing NearShare desktop integration (package install)...")
+    print("[1/2] Launcher, desktop entries, icon, Nautilus integration")
+    print("  all provided system-wide by the package -- nothing to do")
+    if not _SYSTEM_NAUTILUS_EXTENSION.exists():
+        print("  NOTE: the Files right-click extension is missing; "
+              "reinstall the package, and make sure python3-nautilus is "
+              "installed, then restart Files (nautilus -q)")
+    print(f"[2/2] Keyboard shortcut ({accelerator_label(key or DEFAULT_SHORTCUT_BINDING)}"
+         " -> toggle visibility)")
+    if shortcut:
+        _bind_shortcut(key)
+    else:
+        print("  --no-shortcut passed; leaving any existing binding alone")
+    print("\nInstall complete.")
+    return 0
+
+
 def _install_full(shortcut: bool, key: str | None) -> int:
     print("Installing NearShare desktop integration...")
     print("[1/5] CLI launcher symlink")
@@ -1108,8 +1173,11 @@ def _install_full(shortcut: bool, key: str | None) -> int:
 
 
 def _run_install(shortcut: bool, key: str | None = None) -> int:
-    if _in_snap():
+    layout = _install_layout()
+    if layout == "snap":
         return _install_snap(shortcut, key)
+    if layout == "system":
+        return _install_system(shortcut, key)
     return _install_full(shortcut, key)
 
 
@@ -1167,9 +1235,22 @@ def _uninstall_full() -> int:
     return 0
 
 
+def _uninstall_system() -> int:
+    print("Uninstalling NearShare desktop integration (package install)...")
+    print("[1/2] Launcher, desktop entries, icon, Nautilus integration")
+    print("  owned by the package -- remove with: sudo apt remove nearshare")
+    print("[2/2] Keyboard shortcut")
+    _unbind_shortcut()
+    print("\nDone.")
+    return 0
+
+
 def cmd_uninstall(args: argparse.Namespace) -> int:
-    if _in_snap():
+    layout = _install_layout()
+    if layout == "snap":
         return _uninstall_snap()
+    if layout == "system":
+        return _uninstall_system()
     return _uninstall_full()
 
 
