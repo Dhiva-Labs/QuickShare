@@ -20,6 +20,7 @@ import logging
 import mimetypes
 import os
 import random
+import re
 import string
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,30 @@ KEEP_ALIVE_TIMEOUT = 30.0
 
 
 # ---------------------------------------------------------------- framing
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
+
+
+def safe_filename(name: str, fallback: str = "received-file") -> str:
+    """Reduce a peer-supplied filename to a bare, safe basename.
+
+    The name in an IntroductionFrame is entirely attacker-controlled. Used
+    as-is it is an arbitrary-file-write primitive: Path.__truediv__ with an
+    absolute path ("/etc/cron.d/evil") discards the download directory
+    completely, and "../" segments walk out of it. Take the final path
+    component only, drop separators and control characters, and refuse the
+    specials "." and "..".
+    """
+    # Cut on both separators: a Windows or Android peer may send either.
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    base = _UNSAFE_FILENAME_CHARS.sub("_", base).strip()
+    while base.startswith("."):
+        base = base[1:]          # no hidden files, no "." / ".."
+    base = base.strip()
+    if not base:
+        return fallback
+    return base[:200]            # keep well under NAME_MAX
+
 
 async def read_frame(reader: asyncio.StreamReader) -> bytes:
     header = await reader.readexactly(4)
@@ -329,7 +354,11 @@ class InboundConnection(_ConnectionBase):
         if intro.v1.type != wf.V1Frame.INTRODUCTION:
             raise HandshakeError("expected INTRODUCTION")
 
-        offers = [FileOffer(payload_id=fm.payload_id, name=fm.name,
+        # Sanitise at the edge: the name is shown in the accept dialog and
+        # used for the destination, so the user must be shown exactly the
+        # name that will be written, never a crafted path.
+        offers = [FileOffer(payload_id=fm.payload_id,
+                            name=safe_filename(fm.name),
                             size=fm.size, mime_type=fm.mime_type)
                   for fm in intro.v1.introduction.file_metadata]
         texts = list(intro.v1.introduction.text_metadata)
@@ -369,14 +398,25 @@ class InboundConnection(_ConnectionBase):
 
     def _open_dest(self, offer: FileOffer) -> None:
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        dest = self.download_dir / offer.name
+        download_dir = self.download_dir.resolve()
+        dest = download_dir / safe_filename(offer.name)
         stem, suffix = dest.stem, dest.suffix
         counter = 1
         while dest.exists():
-            dest = self.download_dir / f"{stem} ({counter}){suffix}"
+            dest = download_dir / f"{stem} ({counter}){suffix}"
             counter += 1
+        # Defence in depth: even with a sanitised name, never open a path
+        # that escaped the download directory.
+        if dest.parent.resolve() != download_dir:
+            raise ValueError(f"refusing to write outside {download_dir}")
         offer.dest_path = dest
-        offer.handle = open(dest, "wb")
+        # O_EXCL|O_NOFOLLOW: create it ourselves and never follow a
+        # symlink planted in the download directory (a dangling symlink
+        # reports exists() == False, so the loop above would not catch
+        # it and a plain open() would write through it).
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                     os.O_NOFOLLOW, 0o600)
+        offer.handle = os.fdopen(fd, "wb")
 
     async def _receive_payloads(self, request: TransferRequest,
                                 text_ids: set[int]) -> None:

@@ -23,3 +23,16 @@ sed -i 's/^import \([a-z_]*_pb2\) as/from . import \1 as/' \
 
 touch nearshare/proto/__init__.py
 echo "generated $(ls nearshare/proto/*_pb2.py | wc -l) protobuf modules"
+
+# NOTE ON TARGETS -- the generated code is NOT interchangeable:
+#
+#   tools/genproto.sh .venv/bin/python   dev, tests and the snap (which
+#                                        pip-installs a modern protobuf)
+#   tools/genproto.sh python3            the .deb: Ubuntu's own protoc,
+#                                        matching the python3-protobuf
+#                                        the package depends on
+#
+# Modern protoc emits a runtime-version guard that Ubuntu's protobuf
+# rejects, and Ubuntu's protoc emits pre-4.x descriptors that the PyPI
+# protobuf rejects. Regenerate for the target you are about to build;
+# `debuild` in particular needs the python3 form (see debian/rules).

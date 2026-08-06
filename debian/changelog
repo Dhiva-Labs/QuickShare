@@ -1,3 +1,10 @@
+nearshare (1.0.6~noble1) noble; urgency=medium
+
+  * install/uninstall are layout-aware: package installs only bind the
+    shortcut.
+
+ -- Dhivakar R <dhivakar1010@gmail.com>  Thu, 06 Aug 2026 14:30:46 +0530
+
 nearshare (1.0.5~noble1) noble; urgency=medium
 
   * Setup panel no longer offers actions that strict confinement cannot
